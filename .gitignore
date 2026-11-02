@@ -15,8 +15,11 @@ out/
 # testing
 coverage/
 
-# local env
+# local env & runtime data
 .env*.local
+.env
+data/
+**/data/*.json
 
 # logs
 *.log*
