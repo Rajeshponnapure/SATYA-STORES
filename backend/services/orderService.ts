@@ -37,11 +37,29 @@ export const orderService = {
       }
     }
 
-    // 2. Atomic stock reservation
+    // 2. Atomic stock reservation & audit logging
+    if (!db.inventoryMovements) db.inventoryMovements = [];
+    const orderNumber = `SAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newOrderId = `ord-${Date.now()}`;
+
     for (const item of items) {
       const product = db.products.find((p) => p.id === item.productId);
       if (product) {
         product.reservedQuantity += item.quantity;
+        db.inventoryMovements.unshift({
+          id: `mov-${Date.now()}-${product.id}`,
+          productId: product.id,
+          productName: product.productName,
+          sku: product.sku,
+          movementType: "RESERVATION",
+          quantity: item.quantity,
+          previousQuantity: product.stockQuantity,
+          newQuantity: product.stockQuantity,
+          reason: `Stock reserved upon checkout for Order ${orderNumber}`,
+          relatedOrderId: newOrderId,
+          performedBy: "Customer Checkout",
+          createdAt: new Date().toISOString(),
+        });
       }
     }
 
@@ -52,11 +70,10 @@ export const orderService = {
     );
     const shippingCharge =
       subtotal >= db.settings.freeShippingThreshold ? 0 : db.settings.standardShippingFee;
-    const totalAmount = subtotal + shippingCharge;
-    const orderNumber = `SAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const totalAmount = Math.max(0, subtotal - (payload as any).discount + shippingCharge);
 
     const newOrder: Order = {
-      id: `ord-${Date.now()}`,
+      id: newOrderId,
       orderNumber,
       userId: userId || "guest-user",
       customerName: address.recipientName,
@@ -150,10 +167,27 @@ export const orderService = {
     }
 
     // Release reserved inventory
+    if (!db.inventoryMovements) db.inventoryMovements = [];
     for (const item of order.itemsSnapshot) {
       const prod = db.products.find((p) => p.id === item.productId);
-      if (prod && prod.reservedQuantity >= item.quantity) {
-        prod.reservedQuantity -= item.quantity;
+      if (prod && prod.reservedQuantity > 0) {
+        const releasedQty = Math.min(prod.reservedQuantity, item.quantity);
+        prod.reservedQuantity -= releasedQty;
+
+        db.inventoryMovements.unshift({
+          id: `mov-${Date.now()}-${prod.id}`,
+          productId: prod.id,
+          productName: prod.productName,
+          sku: prod.sku,
+          movementType: "RELEASE",
+          quantity: releasedQty,
+          previousQuantity: prod.stockQuantity,
+          newQuantity: prod.stockQuantity,
+          reason: `Stock reservation released: Order ${order.orderNumber} cancelled (${reason})`,
+          relatedOrderId: order.id,
+          performedBy: "Store System",
+          createdAt: new Date().toISOString(),
+        });
       }
     }
 

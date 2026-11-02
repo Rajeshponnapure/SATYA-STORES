@@ -26,8 +26,13 @@ const config: Config = {
         "pulse-subtle": "pulseSubtle 6s ease-in-out infinite",
         "cart-bump": "cartBump 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
         "shimmer-sweep": "shimmerSweep 3s linear infinite",
+        marquee: "marquee 28s linear infinite",
       },
       keyframes: {
+        marquee: {
+          "0%": { transform: "translateX(0%)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
         gridDrift: {
           "0%": { transform: "translate(0px, 0px)" },
           "100%": { transform: "translate(18px, 18px)" },

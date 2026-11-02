@@ -345,6 +345,15 @@ app.post("/api/admin/payments/reject", async (req: Request, res: Response) => {
 // ==========================================
 // INVENTORY & DELIVERY APIs
 // ==========================================
+app.get("/api/admin/inventory/movements", async (_req: Request, res: Response) => {
+  try {
+    const movements = await inventoryService.getMovements();
+    res.json({ success: true, movements });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post("/api/admin/inventory/adjust", async (req: Request, res: Response) => {
   try {
     const result = await inventoryService.adjustStock(req.body);

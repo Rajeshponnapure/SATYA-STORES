@@ -727,6 +727,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
+      await refreshBackendData();
     } catch {}
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
     toast.success("Product updated successfully");
@@ -736,6 +737,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteProduct = async (id: string): Promise<boolean> => {
     try {
       await fetch(`/api/products/${id}`, { method: "DELETE" });
+      await refreshBackendData();
     } catch {}
     setProducts((prev) => prev.filter((p) => p.id !== id));
     toast.info("Product removed from catalog");
@@ -753,6 +755,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (res.ok && data.success) {
         setCategories((prev) => [...prev, data.category]);
         toast.success(`Category "${categoryData.name}" created!`);
+        await refreshBackendData();
         return true;
       }
     } catch {}
@@ -765,6 +768,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const deleteCategory = async (id: string): Promise<boolean> => {
     try {
       await fetch(`/api/categories/${id}`, { method: "DELETE" });
+      await refreshBackendData();
     } catch {}
     setCategories((prev) => prev.filter((c) => c.id !== id));
     toast.info("Category deleted");
@@ -881,6 +885,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productId, newQuantity, reason, adminName: "Admin" }),
       });
+      await refreshBackendData();
     } catch {}
     setProducts((prev) =>
       prev.map((p) => (p.id === productId ? { ...p, stockQuantity: newQuantity } : p))
@@ -897,6 +902,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await res.json();
       if (data.settings) setSettings(data.settings);
+      await refreshBackendData();
     } catch {}
     setSettings((prev) => ({ ...prev, ...newSettings }));
     toast.success("Store settings updated");

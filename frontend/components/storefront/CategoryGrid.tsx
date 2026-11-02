@@ -38,8 +38,8 @@ export function CategoryGrid() {
                 />
               </div>
 
-              <h3 className="font-bold text-[11px] sm:text-sm text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                {cat.name.split(" ")[0]}
+              <h3 className="font-bold text-[11px] sm:text-xs text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-2 min-h-[2.2em] leading-snug">
+                {cat.name}
               </h3>
 
               <p className="text-[9px] sm:text-[11px] text-slate-400">

@@ -42,8 +42,25 @@ export const paymentService = {
     for (const item of order.itemsSnapshot) {
       const product = db.products.find((p) => p.id === item.productId);
       if (product) {
+        const prevStock = product.stockQuantity;
         product.stockQuantity = Math.max(0, product.stockQuantity - item.quantity);
         product.reservedQuantity = Math.max(0, product.reservedQuantity - item.quantity);
+
+        if (!db.inventoryMovements) db.inventoryMovements = [];
+        db.inventoryMovements.unshift({
+          id: `mov-${Date.now()}-${product.id}`,
+          productId: product.id,
+          productName: product.productName,
+          sku: product.sku,
+          movementType: "SALE",
+          quantity: item.quantity,
+          previousQuantity: prevStock,
+          newQuantity: product.stockQuantity,
+          reason: `Payment verified by store owner for Order ${order.orderNumber}`,
+          relatedOrderId: order.id,
+          performedBy: "Store Owner",
+          createdAt: new Date().toISOString(),
+        });
       }
     }
 
@@ -74,7 +91,24 @@ export const paymentService = {
     for (const item of order.itemsSnapshot) {
       const product = db.products.find((p) => p.id === item.productId);
       if (product) {
+        const releaseQty = Math.min(product.reservedQuantity, item.quantity);
         product.reservedQuantity = Math.max(0, product.reservedQuantity - item.quantity);
+
+        if (!db.inventoryMovements) db.inventoryMovements = [];
+        db.inventoryMovements.unshift({
+          id: `mov-${Date.now()}-${product.id}`,
+          productId: product.id,
+          productName: product.productName,
+          sku: product.sku,
+          movementType: "RELEASE",
+          quantity: releaseQty,
+          previousQuantity: product.stockQuantity,
+          newQuantity: product.stockQuantity,
+          reason: `Stock reservation released: Payment rejected for Order ${order.orderNumber} (${reason.trim()})`,
+          relatedOrderId: order.id,
+          performedBy: "Store Owner",
+          createdAt: new Date().toISOString(),
+        });
       }
     }
 

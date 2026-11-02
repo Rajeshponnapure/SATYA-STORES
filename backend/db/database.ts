@@ -41,7 +41,7 @@ export interface DatabaseSchema {
   homepageSections: HomepageSection[];
 }
 
-const dataDir = path.join(process.cwd(), "data");
+const dataDir = path.resolve(__dirname, "..", "data");
 const dbFilePath = path.join(dataDir, "database.json");
 
 function ensureDbFile() {
