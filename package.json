@@ -1,40 +1,18 @@
 {
-  "name": "satya-stores",
+  "name": "satya-stores-workspace",
   "version": "1.0.0",
   "private": true,
+  "description": "Satya Stores Modular Architecture — Frontend (Port 3000) & Backend (Port 5000)",
   "scripts": {
-    "dev": "next dev frontend",
-    "build": "next build frontend",
-    "start": "next start frontend",
-    "lint": "next lint frontend"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.118.0",
-    "@types/three": "^0.187.0",
-    "bcryptjs": "^3.0.2",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "framer-motion": "^12.4.0",
-    "jsonwebtoken": "^9.0.2",
-    "lucide-react": "^1.16.0",
-    "mongoose": "^8.9.0",
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sonner": "^2.0.1",
-    "tailwind-merge": "^2.6.0",
-    "three": "^0.187.0",
-    "zod": "^3.24.1"
+    "dev": "concurrently -n \"BACKEND:5000,FRONTEND:3000\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.8",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.0"
+    "concurrently": "^9.1.2"
   }
 }
