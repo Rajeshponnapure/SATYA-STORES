@@ -9,7 +9,49 @@ export interface User {
   mobileVerified: boolean;
   emailVerified: boolean;
   accountStatus: "active" | "suspended";
+  favorites?: string[];
+  addresses?: Address[];
   createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  productId: string;
+  userId: string;
+  userName: string;
+  rating: number;
+  title: string;
+  comment: string;
+  createdAt: string;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  minOrderValue: number;
+  maxDiscountAmount?: number;
+  status: "active" | "inactive";
+  expiryDate?: string;
+}
+
+export interface MarqueeItem {
+  id: string;
+  text: string;
+  link?: string;
+  position: "header" | "hero_top" | "footer";
+  backgroundColor?: string;
+  textColor?: string;
+  status: "active" | "inactive";
+}
+
+export interface HomepageSection {
+  id: string;
+  type: "hero_banner" | "marquee" | "categories" | "featured_deals" | "best_sellers" | "trust_badges";
+  title: string;
+  enabled: boolean;
+  order: number;
 }
 
 export interface Address {

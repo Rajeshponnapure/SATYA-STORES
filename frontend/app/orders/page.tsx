@@ -15,10 +15,14 @@ import {
 } from "lucide-react";
 
 export default function OrdersPage() {
-  const { orders } = useStore();
+  const { orders, currentUser } = useStore();
   const [filter, setFilter] = useState<string>("all");
 
-  const filteredOrders = orders.filter((ord) => {
+  const relevantOrders = currentUser
+    ? orders.filter((o) => o.userId === currentUser.id || o.customerEmail === currentUser.email)
+    : orders;
+
+  const filteredOrders = relevantOrders.filter((ord) => {
     if (filter === "pending") return ord.paymentStatus === "Verification Pending" || ord.paymentStatus === "Awaiting Payment";
     if (filter === "verified") return ord.paymentStatus === "Verified";
     if (filter === "delivered") return ord.deliveryStatus === "Delivered";

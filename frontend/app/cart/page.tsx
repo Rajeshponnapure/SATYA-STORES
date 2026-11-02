@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
@@ -14,17 +14,41 @@ import {
   ShoppingBag,
   ArrowLeft,
   Truck,
+  Tag,
+  Check,
+  X,
 } from "lucide-react";
 
 export default function CartPage() {
   const router = useRouter();
-  const { cart, removeFromCart, updateCartQuantity, cartTotal, settings, clearCart } =
-    useStore();
+  const {
+    cart,
+    removeFromCart,
+    updateCartQuantity,
+    cartTotal,
+    settings,
+    clearCart,
+    appliedCoupon,
+    discountAmount,
+    applyCoupon,
+    removeCoupon,
+  } = useStore();
+
+  const [couponCode, setCouponCode] = useState("");
+  const [isApplying, setIsApplying] = useState(false);
 
   const shippingCharge =
     cartTotal >= settings.freeShippingThreshold ? 0 : settings.standardShippingFee;
-  const orderTotal = cartTotal + shippingCharge;
+  const orderTotal = Math.max(0, cartTotal - discountAmount + shippingCharge);
   const freeShippingAway = Math.max(0, settings.freeShippingThreshold - cartTotal);
+
+  const handleApplyCoupon = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!couponCode.trim()) return;
+    setIsApplying(true);
+    await applyCoupon(couponCode);
+    setIsApplying(false);
+  };
 
   if (cart.length === 0) {
     return (
@@ -181,11 +205,70 @@ export default function CartPage() {
           <div className="glass-card rounded-3xl p-6 border border-slate-200/80 shadow-sm space-y-4">
             <h3 className="font-extrabold text-base text-slate-900">Order Summary</h3>
 
+            {/* Coupon & Discount Code Box */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="p-1 rounded-lg bg-emerald-100 text-emerald-700">
+                      <Tag className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <p className="font-extrabold text-xs text-slate-900 tracking-wider">
+                        {appliedCoupon.code}
+                      </p>
+                      <p className="text-[10px] text-emerald-600 font-semibold">
+                        Saved {formatINR(discountAmount)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={removeCoupon}
+                    className="p-1 text-slate-400 hover:text-rose-600 text-xs"
+                    title="Remove coupon"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApplyCoupon} className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+                    Have a Promo Code?
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. WELCOME500"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs uppercase font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isApplying || !couponCode.trim()}
+                      className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors disabled:opacity-40"
+                    >
+                      {isApplying ? "..." : "Apply"}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Try <span className="font-mono font-bold text-blue-600">WELCOME500</span> for ₹500 off!
+                  </p>
+                </form>
+              )}
+            </div>
+
             <div className="space-y-2.5 text-xs text-slate-600 pb-4 border-b border-slate-100">
               <div className="flex justify-between">
                 <span>Items Subtotal</span>
                 <span className="font-bold text-slate-900">{formatINR(cartTotal)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-emerald-600 font-semibold">
+                  <span>Coupon Discount</span>
+                  <span>-{formatINR(discountAmount)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>Shipping / Delivery</span>
                 {shippingCharge === 0 ? (

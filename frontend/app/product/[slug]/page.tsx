@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
@@ -17,14 +17,26 @@ import {
   ChevronRight,
   CreditCard,
   QrCode,
+  Heart,
+  MessageSquarePlus,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Review } from "@/types";
 
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params?.slug as string;
-  const { products, addToCart } = useStore();
+  const {
+    products,
+    addToCart,
+    favorites,
+    toggleFavorite,
+    currentUser,
+    submitReview,
+    fetchProductReviews,
+  } = useStore();
 
   const product = products.find((p) => p.slug === slug);
 
@@ -34,6 +46,18 @@ export default function ProductDetailPage() {
   );
   const [selectedImageIndex, setSelectedImageIndex] = useState<number>(0);
   const [quantity, setQuantity] = useState<number>(1);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [newRating, setNewRating] = useState(5);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  useEffect(() => {
+    if (product) {
+      fetchProductReviews(product.id).then((r) => setReviews(r));
+    }
+  }, [product, fetchProductReviews]);
 
   if (!product) {
     return (
@@ -46,6 +70,7 @@ export default function ProductDetailPage() {
     );
   }
 
+  const isFavorite = favorites.includes(product.id);
   const selectedVariant = product.variants.find((v) => v.sku === selectedVariantSku);
   const activePrice = selectedVariant ? selectedVariant.price : product.sellingPrice;
   const activeMrp = selectedVariant ? selectedVariant.mrp : product.mrp;
@@ -64,6 +89,21 @@ export default function ProductDetailPage() {
   const handleBuyNow = () => {
     addToCart(product, selectedVariantSku, quantity);
     router.push("/checkout");
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewTitle.trim() || !reviewComment.trim()) return;
+
+    setIsSubmittingReview(true);
+    await submitReview(product.id, newRating, reviewTitle, reviewComment);
+    setIsSubmittingReview(false);
+    setShowReviewForm(false);
+    setReviewTitle("");
+    setReviewComment("");
+    // Refresh reviews
+    const refreshed = await fetchProductReviews(product.id);
+    setReviews(refreshed);
   };
 
   return (
@@ -96,6 +136,17 @@ export default function ProductDetailPage() {
               alt={product.productName}
               className="max-h-full max-w-full object-contain transition-all duration-300"
             />
+
+            {/* Favorite Wishlist Button */}
+            <button
+              onClick={() => toggleFavorite(product.id)}
+              className="absolute top-4 right-4 p-2.5 rounded-full bg-white/90 hover:bg-white text-slate-400 hover:text-rose-500 shadow-md transition-colors z-10"
+              aria-label="Add to wishlist"
+            >
+              <Heart
+                className={`h-5 w-5 ${isFavorite ? "fill-rose-500 text-rose-500" : ""}`}
+              />
+            </button>
 
             {discountPercent > 0 && (
               <span className="absolute top-4 left-4 px-2.5 py-1 rounded-lg bg-orange-500 text-white font-extrabold text-xs shadow-md">
@@ -174,7 +225,18 @@ export default function ProductDetailPage() {
                   MRP {formatINR(activeMrp)}
                 </span>
               )}
-              {discountPercent > 0 && (
+              {/* Favorite Wishlist Button */}
+            <button
+              onClick={() => toggleFavorite(product.id)}
+              className="absolute top-4 right-4 p-2.5 rounded-full bg-white/90 hover:bg-white text-slate-400 hover:text-rose-500 shadow-md transition-colors z-10"
+              aria-label="Add to wishlist"
+            >
+              <Heart
+                className={`h-5 w-5 ${isFavorite ? "fill-rose-500 text-rose-500" : ""}`}
+              />
+            </button>
+
+            {discountPercent > 0 && (
                 <span className="text-xs font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
                   Save {formatINR(activeMrp - activePrice)} ({discountPercent}% OFF)
                 </span>
@@ -312,6 +374,143 @@ export default function ProductDetailPage() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Customer Reviews & Feedback Section */}
+      <div className="bg-white/90 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm mt-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center space-x-2">
+              <span>Customer Reviews & Ratings</span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-bold">
+                {reviews.length} Verified
+              </span>
+            </h2>
+            <div className="flex items-center space-x-2 mt-1">
+              <div className="flex items-center text-amber-500">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <Star
+                    key={s}
+                    className={`h-4 w-4 ${
+                      s <= (product.rating || 4.8)
+                        ? "fill-amber-400 text-amber-400"
+                        : "text-slate-200"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-sm font-bold text-slate-800">
+                {product.rating || 4.8} out of 5
+              </span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowReviewForm(!showReviewForm)}
+            className="inline-flex items-center space-x-1.5 py-2 px-4 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs transition-colors self-start sm:self-auto"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            <span>{showReviewForm ? "Cancel Review" : "Write a Review"}</span>
+          </button>
+        </div>
+
+        {/* Review Form */}
+        {showReviewForm && (
+          <form onSubmit={handleReviewSubmit} className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Share Your Experience
+            </h3>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">Your Rating</label>
+              <div className="flex items-center space-x-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setNewRating(star)}
+                    className="p-1 hover:scale-110 transition-transform"
+                  >
+                    <Star
+                      className={`h-5 w-5 ${
+                        star <= newRating ? "fill-amber-400 text-amber-400" : "text-slate-300"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">Headline</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Excellent build quality, fast dispatch!"
+                value={reviewTitle}
+                onChange={(e) => setReviewTitle(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-white"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">Review</label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Tell other shoppers about performance, packaging, or warranty..."
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-white"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmittingReview}
+              className="py-2 px-5 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span>{isSubmittingReview ? "Submitting..." : "Submit Review"}</span>
+            </button>
+          </form>
+        )}
+
+        {/* Reviews List */}
+        <div className="mt-4 divide-y divide-slate-100">
+          {reviews.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center">
+              No reviews yet. Be the first to share your experience!
+            </p>
+          ) : (
+            reviews.map((rev) => (
+              <div key={rev.id} className="py-3.5 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-slate-900 text-xs">{rev.userName}</span>
+                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded-full border border-emerald-100">
+                      Verified Buyer
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {new Date(rev.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1 text-amber-500">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                      key={s}
+                      className={`h-3 w-3 ${
+                        s <= rev.rating ? "fill-amber-400 text-amber-400" : "text-slate-200"
+                      }`}
+                    />
+                  ))}
+                  <span className="font-bold text-slate-800 text-xs ml-1">{rev.title}</span>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed pt-0.5">{rev.comment}</p>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

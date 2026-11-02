@@ -22,20 +22,21 @@ import { toast } from "sonner";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { cart, cartTotal, settings, createOrder, submitPaymentDetails, currentUser } =
+  const { cart, cartTotal, settings, createOrder, submitPaymentDetails, currentUser, discountAmount } =
     useStore();
 
   const [step, setStep] = useState<"address" | "payment" | "utr">("address");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Address Form State
-  const [recipientName, setRecipientName] = useState(currentUser?.fullName || "");
-  const [mobileNumber, setMobileNumber] = useState(currentUser?.mobileNumber || "");
-  const [addressLine1, setAddressLine1] = useState("Flat 204, Royal Palms");
-  const [addressLine2, setAddressLine2] = useState("MG Road");
-  const [city, setCity] = useState("Vijayawada");
-  const [state, setState] = useState("Andhra Pradesh");
-  const [postalCode, setPostalCode] = useState("520002");
+  // Address Form State (Auto-filled from logged-in customer profile if available)
+  const defaultAddr = currentUser?.addresses?.[0];
+  const [recipientName, setRecipientName] = useState(defaultAddr?.recipientName || currentUser?.fullName || "");
+  const [mobileNumber, setMobileNumber] = useState(defaultAddr?.mobileNumber || currentUser?.mobileNumber || "");
+  const [addressLine1, setAddressLine1] = useState(defaultAddr?.addressLine1 || "Flat 204, Royal Palms");
+  const [addressLine2, setAddressLine2] = useState(defaultAddr?.addressLine2 || "MG Road");
+  const [city, setCity] = useState(defaultAddr?.city || "Vijayawada");
+  const [state, setState] = useState(defaultAddr?.state || "Andhra Pradesh");
+  const [postalCode, setPostalCode] = useState(defaultAddr?.postalCode || "520002");
 
   // Payment Selection State
   const [paymentMethod, setPaymentMethod] = useState<"UPI" | "BANK_TRANSFER">("UPI");
@@ -48,7 +49,7 @@ export default function CheckoutPage() {
 
   const shippingCharge =
     cartTotal >= settings.freeShippingThreshold ? 0 : settings.standardShippingFee;
-  const totalAmount = cartTotal + shippingCharge;
+  const totalAmount = Math.max(0, cartTotal - discountAmount + shippingCharge);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);

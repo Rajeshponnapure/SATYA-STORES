@@ -1,4 +1,15 @@
-import { Category, Product, Order, StoreSettings, Promotion } from "../types";
+import {
+  Category,
+  Product,
+  Order,
+  StoreSettings,
+  Promotion,
+  User,
+  Review,
+  Coupon,
+  MarqueeItem,
+  HomepageSection,
+} from "../types";
 
 export const initialCategories: Category[] = [
   {
@@ -653,5 +664,189 @@ export const initialOrders: Order[] = [
     createdAt: "2026-11-02T14:10:00Z",
     updatedAt: "2026-11-02T14:10:00Z",
   },
+];
+
+export const initialUsers: User[] = [
+  {
+    id: "usr-admin-1",
+    fullName: "Satya Store Owner",
+    email: "admin@sathyastores.com",
+    mobileNumber: "+91 98480 22338",
+    password: "admin123", // Default administrative password
+    role: "owner",
+    mobileVerified: true,
+    emailVerified: true,
+    accountStatus: "active",
+    createdAt: "2026-01-01T00:00:00Z",
+  },
+  {
+    id: "usr-cust-1",
+    fullName: "Rajesh Varma",
+    email: "rajesh.varma@gmail.com",
+    mobileNumber: "+91 98490 12345",
+    password: "customer123",
+    role: "customer",
+    mobileVerified: true,
+    emailVerified: true,
+    accountStatus: "active",
+    favorites: ["prod-iphone-16-pro", "prod-macbook-air-m3"],
+    addresses: [
+      {
+        id: "addr-1",
+        userId: "usr-cust-1",
+        recipientName: "Rajesh Varma",
+        mobileNumber: "+91 98490 12345",
+        addressLine1: "Flat 402, Srinivasa Heights, VIP Road",
+        city: "Vijayawada",
+        state: "Andhra Pradesh",
+        postalCode: "520010",
+        isDefault: true,
+      },
+    ],
+    createdAt: "2026-10-15T10:30:00Z",
+  },
+  {
+    id: "usr-cust-2",
+    fullName: "Priya Sharma",
+    email: "priya.sharma@yahoo.com",
+    mobileNumber: "+91 94401 98765",
+    password: "customer123",
+    role: "customer",
+    mobileVerified: true,
+    emailVerified: true,
+    accountStatus: "active",
+    favorites: ["prod-lg-oled-55", "prod-samsung-s25-ultra"],
+    addresses: [
+      {
+        id: "addr-2",
+        userId: "usr-cust-2",
+        recipientName: "Priya Sharma",
+        mobileNumber: "+91 94401 98765",
+        addressLine1: "Plot 18, Phase 2, Hill View Enclave",
+        city: "Visakhapatnam",
+        state: "Andhra Pradesh",
+        postalCode: "530003",
+        isDefault: true,
+      },
+    ],
+    createdAt: "2026-10-20T14:15:00Z",
+  },
+  {
+    id: "usr-cust-3",
+    fullName: "Kiran Kumar",
+    email: "kiran.kumar@outlook.com",
+    mobileNumber: "+91 97001 12233",
+    password: "customer123",
+    role: "customer",
+    mobileVerified: true,
+    emailVerified: true,
+    accountStatus: "active",
+    favorites: ["prod-preethi-zodiac"],
+    addresses: [
+      {
+        id: "addr-3",
+        userId: "usr-cust-3",
+        recipientName: "Kiran Kumar",
+        mobileNumber: "+91 97001 12233",
+        addressLine1: "House #12-4-89, Station Road",
+        city: "Guntur",
+        state: "Andhra Pradesh",
+        postalCode: "522001",
+        isDefault: true,
+      },
+    ],
+    createdAt: "2026-10-28T09:40:00Z",
+  },
+];
+
+export const initialReviews: Review[] = [
+  {
+    id: "rev-1",
+    productId: "prod-iphone-16-pro",
+    userId: "usr-cust-1",
+    userName: "Rajesh Varma",
+    rating: 5,
+    title: "Incredible camera and battery life!",
+    comment: "Bought this directly from Satya Stores. Delivery was fast and phone is 100% genuine with official Apple warranty.",
+    createdAt: "2026-10-29T16:20:00Z",
+  },
+  {
+    id: "rev-2",
+    productId: "prod-macbook-air-m3",
+    userId: "usr-cust-2",
+    userName: "Priya Sharma",
+    rating: 5,
+    title: "Lightweight beast for coding",
+    comment: "The Midnight finish looks stunning. Battery lasts nearly two days on light productivity.",
+    createdAt: "2026-10-31T11:00:00Z",
+  },
+  {
+    id: "rev-3",
+    productId: "prod-preethi-zodiac",
+    userId: "usr-cust-3",
+    userName: "Kiran Kumar",
+    rating: 4,
+    title: "Heavy duty master chef jar is superb",
+    comment: "Dough kneading and vegetable chopping takes under 2 minutes. Genuine motor warranty provided.",
+    createdAt: "2026-11-01T18:45:00Z",
+  },
+];
+
+export const initialCoupons: Coupon[] = [
+  {
+    id: "coup-1",
+    code: "WELCOME500",
+    discountType: "fixed",
+    discountValue: 500,
+    minOrderValue: 2999,
+    status: "active",
+  },
+  {
+    id: "coup-2",
+    code: "FESTIVE10",
+    discountType: "percentage",
+    discountValue: 10,
+    minOrderValue: 5000,
+    maxDiscountAmount: 2000,
+    status: "active",
+  },
+  {
+    id: "coup-3",
+    code: "DIWALI2026",
+    discountType: "fixed",
+    discountValue: 1000,
+    minOrderValue: 10000,
+    status: "active",
+  },
+];
+
+export const initialMarquees: MarqueeItem[] = [
+  {
+    id: "marq-1",
+    text: "🔥 FESTIVE MEGA SALE: Up to 45% OFF on Smartphones, Laptops & Appliances! Free Express Delivery across AP & Telangana on all orders above ₹999!",
+    link: "/category/mobiles",
+    position: "header",
+    backgroundColor: "#1E293B",
+    textColor: "#F8FAFC",
+    status: "active",
+  },
+  {
+    id: "marq-2",
+    text: "⚡ Direct Bank / UPI Transfer available with instant 1-tap payment! Guaranteed Official Manufacturer Warranty on all items.",
+    link: "/pages/warranty",
+    position: "hero_top",
+    backgroundColor: "#EFF6FF",
+    textColor: "#1D4ED8",
+    status: "active",
+  },
+];
+
+export const initialHomepageSections: HomepageSection[] = [
+  { id: "sec-marquee-header", type: "marquee", title: "Top Marquee Announcement", enabled: true, order: 1 },
+  { id: "sec-hero", type: "hero_banner", title: "Hero Carousel Banners", enabled: true, order: 2 },
+  { id: "sec-categories", type: "categories", title: "Shop by Category Grid", enabled: true, order: 3 },
+  { id: "sec-featured", type: "featured_deals", title: "Flash Deals of the Day", enabled: true, order: 4 },
+  { id: "sec-best-sellers", type: "best_sellers", title: "Best Selling Electronics", enabled: true, order: 5 },
+  { id: "sec-trust", type: "trust_badges", title: "Why Buy From Satya Stores", enabled: true, order: 6 },
 ];
 

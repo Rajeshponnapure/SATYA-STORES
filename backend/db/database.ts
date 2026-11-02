@@ -1,12 +1,29 @@
 import fs from "fs";
 import path from "path";
-import { Product, Category, Order, StoreSettings, InventoryMovement, Promotion } from "../types";
+import {
+  Product,
+  Category,
+  Order,
+  StoreSettings,
+  InventoryMovement,
+  Promotion,
+  User,
+  Review,
+  Coupon,
+  MarqueeItem,
+  HomepageSection,
+} from "../types";
 import {
   initialProducts,
   initialCategories,
   initialOrders,
   initialStoreSettings,
   initialPromotions,
+  initialUsers,
+  initialReviews,
+  initialCoupons,
+  initialMarquees,
+  initialHomepageSections,
 } from "./initialData";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
@@ -17,6 +34,11 @@ export interface DatabaseSchema {
   settings: StoreSettings;
   promotions: Promotion[];
   inventoryMovements: InventoryMovement[];
+  users: User[];
+  reviews: Review[];
+  coupons: Coupon[];
+  marquees: MarqueeItem[];
+  homepageSections: HomepageSection[];
 }
 
 const dataDir = path.join(process.cwd(), "data");
@@ -35,6 +57,11 @@ function ensureDbFile() {
       settings: initialStoreSettings,
       promotions: initialPromotions,
       inventoryMovements: [],
+      users: initialUsers,
+      reviews: initialReviews,
+      coupons: initialCoupons,
+      marquees: initialMarquees,
+      homepageSections: initialHomepageSections,
     };
     fs.writeFileSync(dbFilePath, JSON.stringify(initialDb, null, 2), "utf-8");
   }
@@ -63,6 +90,11 @@ export async function getDatabase(): Promise<DatabaseSchema> {
           settings: (settingsData as any) || initialStoreSettings,
           promotions: initialPromotions,
           inventoryMovements: [],
+          users: initialUsers,
+          reviews: initialReviews,
+          coupons: initialCoupons,
+          marquees: initialMarquees,
+          homepageSections: initialHomepageSections,
         };
       }
     } catch {
@@ -73,7 +105,32 @@ export async function getDatabase(): Promise<DatabaseSchema> {
   ensureDbFile();
   try {
     const raw = fs.readFileSync(dbFilePath, "utf-8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as DatabaseSchema;
+    let modified = false;
+    if (!parsed.users || !Array.isArray(parsed.users)) {
+      parsed.users = initialUsers;
+      modified = true;
+    }
+    if (!parsed.reviews || !Array.isArray(parsed.reviews)) {
+      parsed.reviews = initialReviews;
+      modified = true;
+    }
+    if (!parsed.coupons || !Array.isArray(parsed.coupons)) {
+      parsed.coupons = initialCoupons;
+      modified = true;
+    }
+    if (!parsed.marquees || !Array.isArray(parsed.marquees)) {
+      parsed.marquees = initialMarquees;
+      modified = true;
+    }
+    if (!parsed.homepageSections || !Array.isArray(parsed.homepageSections)) {
+      parsed.homepageSections = initialHomepageSections;
+      modified = true;
+    }
+    if (modified) {
+      fs.writeFileSync(dbFilePath, JSON.stringify(parsed, null, 2), "utf-8");
+    }
+    return parsed;
   } catch {
     return {
       products: initialProducts,
@@ -82,6 +139,11 @@ export async function getDatabase(): Promise<DatabaseSchema> {
       settings: initialStoreSettings,
       promotions: initialPromotions,
       inventoryMovements: [],
+      users: initialUsers,
+      reviews: initialReviews,
+      coupons: initialCoupons,
+      marquees: initialMarquees,
+      homepageSections: initialHomepageSections,
     };
   }
 }

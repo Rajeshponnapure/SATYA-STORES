@@ -5,11 +5,54 @@ export interface User {
   fullName: string;
   email: string;
   mobileNumber: string;
+  password?: string; // Hashed or stored credential
   role: UserRole;
   mobileVerified: boolean;
   emailVerified: boolean;
   accountStatus: "active" | "suspended";
+  favorites?: string[]; // Product IDs
+  addresses?: Address[];
   createdAt: string;
+}
+
+export interface Review {
+  id: string;
+  productId: string;
+  userId: string;
+  userName: string;
+  rating: number; // 1 to 5
+  title: string;
+  comment: string;
+  createdAt: string;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  minOrderValue: number;
+  maxDiscountAmount?: number;
+  status: "active" | "inactive";
+  expiryDate?: string;
+}
+
+export interface MarqueeItem {
+  id: string;
+  text: string;
+  link?: string;
+  position: "header" | "hero_top" | "footer";
+  backgroundColor?: string;
+  textColor?: string;
+  status: "active" | "inactive";
+}
+
+export interface HomepageSection {
+  id: string;
+  type: "hero_banner" | "marquee" | "categories" | "featured_deals" | "best_sellers" | "trust_badges";
+  title: string;
+  enabled: boolean;
+  order: number;
 }
 
 export interface Address {

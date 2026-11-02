@@ -1,4 +1,13 @@
-import { Category, Product, Order, StoreSettings, Promotion } from "@/types";
+import {
+  Category,
+  Product,
+  Order,
+  StoreSettings,
+  Promotion,
+  MarqueeItem,
+  Coupon,
+  HomepageSection,
+} from "@/types";
 
 export const initialCategories: Category[] = [
   {
@@ -653,5 +662,55 @@ export const initialOrders: Order[] = [
     createdAt: "2026-11-02T14:10:00Z",
     updatedAt: "2026-11-02T14:10:00Z",
   },
+];
+
+export const initialCoupons: Coupon[] = [
+  {
+    id: "coup-1",
+    code: "WELCOME500",
+    discountType: "fixed",
+    discountValue: 500,
+    minOrderValue: 2999,
+    status: "active",
+  },
+  {
+    id: "coup-2",
+    code: "FESTIVE10",
+    discountType: "percentage",
+    discountValue: 10,
+    minOrderValue: 5000,
+    maxDiscountAmount: 2000,
+    status: "active",
+  },
+];
+
+export const initialMarquees: MarqueeItem[] = [
+  {
+    id: "marq-1",
+    text: "🔥 FESTIVE MEGA SALE: Up to 45% OFF on Smartphones, Laptops & Appliances! Free Express Delivery on orders above ₹999!",
+    link: "/category/mobiles",
+    position: "header",
+    backgroundColor: "#0F172A",
+    textColor: "#F8FAFC",
+    status: "active",
+  },
+  {
+    id: "marq-2",
+    text: "⚡ Direct Bank / Instant UPI Transfer Available with 1-Tap Copy! 100% Genuine Manufacturer Warranty Included.",
+    link: "/pages/warranty",
+    position: "hero_top",
+    backgroundColor: "#EFF6FF",
+    textColor: "#1D4ED8",
+    status: "active",
+  },
+];
+
+export const initialHomepageSections: HomepageSection[] = [
+  { id: "sec-marquee-header", type: "marquee", title: "Top Announcement Ticker", enabled: true, order: 1 },
+  { id: "sec-hero", type: "hero_banner", title: "Hero Carousel Banners", enabled: true, order: 2 },
+  { id: "sec-categories", type: "categories", title: "Shop by Category Grid", enabled: true, order: 3 },
+  { id: "sec-featured", type: "featured_deals", title: "Flash Deals of the Day", enabled: true, order: 4 },
+  { id: "sec-best-sellers", type: "best_sellers", title: "Best Selling Electronics", enabled: true, order: 5 },
+  { id: "sec-trust", type: "trust_badges", title: "Why Buy From Satya Stores", enabled: true, order: 6 },
 ];
 

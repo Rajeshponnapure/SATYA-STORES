@@ -5,13 +5,14 @@ import Link from "next/link";
 import { Product } from "@/types";
 import { useStore } from "@/context/StoreContext";
 import { formatINR } from "@/lib/utils";
-import { ShoppingCart, Star, Zap } from "lucide-react";
+import { ShoppingCart, Star, Zap, Heart } from "lucide-react";
 
 export function ProductCard({ product }: { product: Product }) {
-  const { addToCart } = useStore();
+  const { addToCart, favorites, toggleFavorite } = useStore();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
+  const isFavorite = favorites.includes(product.id);
   const freeStock = product.stockQuantity - product.reservedQuantity;
   const isOutOfStock = freeStock <= 0;
   const isLowStock = !isOutOfStock && freeStock <= product.lowStockThreshold;
@@ -76,14 +77,31 @@ export function ProductCard({ product }: { product: Product }) {
               )}
             </div>
 
-            {/* Stock Badge (Top Right) */}
-            <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 z-10">
+            {/* Top Right Actions (Stock Badge + Favorite Heart) */}
+            <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 z-10 flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  toggleFavorite(product.id);
+                }}
+                className="p-1 sm:p-1.5 rounded-full bg-white/90 hover:bg-white text-slate-400 hover:text-rose-500 shadow-sm transition-colors"
+                aria-label="Add to wishlist"
+              >
+                <Heart
+                  className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
+                    isFavorite ? "fill-rose-500 text-rose-500" : ""
+                  }`}
+                />
+              </button>
+
               {isOutOfStock ? (
-                <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[9px] border border-red-200">
-                  Out of Stock
+                <span className="px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[8px] sm:text-[9px] border border-red-200">
+                  Out
                 </span>
               ) : isLowStock ? (
-                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[9px] border border-amber-200 animate-pulse">
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold text-[8px] sm:text-[9px] border border-amber-200 animate-pulse">
                   {freeStock} left
                 </span>
               ) : null}

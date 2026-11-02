@@ -81,5 +81,89 @@ export const orderService = {
 
     return { success: true, order: newOrder };
   },
+
+  async getUserOrders(userId: string): Promise<Order[]> {
+    const db = await getDatabase();
+    return (db.orders || []).filter(
+      (o) => o.userId === userId || o.customerEmail === userId
+    );
+  },
+
+  async updateOrderStatus(
+    orderId: string,
+    orderStatus?: any,
+    deliveryStatus?: any,
+    deliveryNotes?: string,
+    manualTrackingRef?: string
+  ): Promise<{ success: boolean; order?: Order; error?: string }> {
+    const db = await getDatabase();
+    const order = db.orders.find((o) => o.id === orderId);
+    if (!order) {
+      return { success: false, error: "Order not found" };
+    }
+
+    if (orderStatus) order.orderStatus = orderStatus;
+    if (deliveryStatus) order.deliveryStatus = deliveryStatus;
+    if (deliveryNotes !== undefined) order.deliveryNotes = deliveryNotes;
+    if (manualTrackingRef !== undefined) order.manualDeliveryReference = manualTrackingRef;
+    order.updatedAt = new Date().toISOString();
+
+    await saveDatabase(db);
+    return { success: true, order };
+  },
+
+  async modifyOrderItems(
+    orderId: string,
+    newItems: any[],
+    discountAmount: number = 0
+  ): Promise<{ success: boolean; order?: Order; error?: string }> {
+    const db = await getDatabase();
+    const order = db.orders.find((o) => o.id === orderId);
+    if (!order) {
+      return { success: false, error: "Order not found" };
+    }
+
+    const subtotal = newItems.reduce((sum, it) => sum + it.unitPrice * it.quantity, 0);
+    const shippingCharge =
+      subtotal >= db.settings.freeShippingThreshold ? 0 : db.settings.standardShippingFee;
+    const totalAmount = Math.max(0, subtotal - discountAmount + shippingCharge);
+
+    order.itemsSnapshot = newItems;
+    order.subtotal = subtotal;
+    order.discount = discountAmount;
+    order.shippingCharge = shippingCharge;
+    order.totalAmount = totalAmount;
+    order.updatedAt = new Date().toISOString();
+
+    await saveDatabase(db);
+    return { success: true, order };
+  },
+
+  async cancelOrder(
+    orderId: string,
+    reason: string = "Cancelled by user"
+  ): Promise<{ success: boolean; error?: string }> {
+    const db = await getDatabase();
+    const order = db.orders.find((o) => o.id === orderId);
+    if (!order) {
+      return { success: false, error: "Order not found" };
+    }
+
+    // Release reserved inventory
+    for (const item of order.itemsSnapshot) {
+      const prod = db.products.find((p) => p.id === item.productId);
+      if (prod && prod.reservedQuantity >= item.quantity) {
+        prod.reservedQuantity -= item.quantity;
+      }
+    }
+
+    order.orderStatus = "Cancelled";
+    order.paymentStatus = "Refund Pending";
+    order.rejectionReason = reason;
+    order.updatedAt = new Date().toISOString();
+
+    await saveDatabase(db);
+    return { success: true };
+  },
 };
 

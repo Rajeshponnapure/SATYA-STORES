@@ -85,5 +85,26 @@ export const paymentService = {
     await saveDatabase(db);
     return { success: true, order };
   },
+
+  async getAllPayments(): Promise<any[]> {
+    const db = await getDatabase();
+    return db.orders
+      .filter((o) => o.paymentReference || o.paymentStatus !== "Awaiting Payment")
+      .map((o) => ({
+        id: `pay-${o.id}`,
+        orderId: o.id,
+        orderNumber: o.orderNumber,
+        customerName: o.customerName,
+        customerMobile: o.customerMobile,
+        amount: o.totalAmount,
+        paymentMethod: o.paymentMethod,
+        paymentReference: o.paymentReference || "N/A",
+        evidenceImageUrl: o.paymentEvidenceUrl,
+        verificationStatus: o.paymentStatus,
+        rejectionReason: o.rejectionReason,
+        createdAt: o.createdAt,
+        updatedAt: o.updatedAt,
+      }));
+  },
 };
 
