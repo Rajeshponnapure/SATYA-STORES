@@ -1,31 +1,19 @@
 import { NextResponse } from "next/server";
-import { getDatabase, saveDatabase } from "@/lib/serverDb";
+import { deliveryService } from "@/backend/services/deliveryService";
 
 export async function PATCH(req: Request) {
   try {
-    const { orderId, deliveryStatus, manualReference, notes } = await req.json();
+    const payload = await req.json();
+    const result = await deliveryService.updateDelivery(payload);
 
-    const db = await getDatabase();
-    const order = db.orders.find((o) => o.id === orderId);
-
-    if (!order) {
-      return NextResponse.json(
-        { success: false, error: "Order not found" },
-        { status: 404 }
-      );
+    if (!result.success) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
 
-    if (deliveryStatus) order.deliveryStatus = deliveryStatus;
-    if (manualReference) order.manualDeliveryReference = manualReference;
-    if (notes) order.deliveryNotes = notes;
-    order.updatedAt = new Date().toISOString();
-
-    await saveDatabase(db);
-
-    return NextResponse.json({ success: true, order });
+    return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json(
-      { success: false, error: err.message || "Failed to update delivery status" },
+      { success: false, error: err.message || "Failed to update delivery" },
       { status: 500 }
     );
   }

@@ -120,3 +120,4 @@ CREATE POLICY "Allow public read-write for products" ON products FOR ALL USING (
 CREATE POLICY "Allow public read-write for orders" ON orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for inventory_movements" ON inventory_movements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for store_settings" ON store_settings FOR ALL USING (true) WITH CHECK (true);
+

@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { getDatabase } from "@/lib/serverDb";
+import { orderService } from "@/backend/services/orderService";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const db = await getDatabase();
-  const order = db.orders.find((o) => o.id === id);
+  const order = await orderService.getOrderById(id);
 
   if (!order) {
     return NextResponse.json(
