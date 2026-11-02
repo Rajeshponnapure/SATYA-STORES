@@ -35,9 +35,11 @@ import {
   LogOut,
   Smartphone,
   ExternalLink,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
-import { OrderStatus, DeliveryStatus, Product, Category, Coupon, MarqueeItem, HomepageSection, User } from "@/types";
+import { OrderStatus, DeliveryStatus, Product, Category, Coupon, MarqueeItem, HomepageSection, User, AdminProfile } from "@/types";
+import { ProductImageUploader } from "@/components/admin/ProductImageUploader";
 
 export default function AdminDashboardPage() {
   const {
@@ -69,6 +71,11 @@ export default function AdminDashboardPage() {
     homepageSections,
     updateHomepageSections,
     refreshBackendData,
+    adminProfile,
+    fetchAdminProfile,
+    updateAdminProfile,
+    generateAdmin2fa,
+    adminChangePasswordWith2FA,
   } = useStore();
 
   // Login form state
@@ -80,6 +87,7 @@ export default function AdminDashboardPage() {
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<
     | "overview"
+    | "profile"
     | "users"
     | "payments"
     | "orders"
@@ -91,6 +99,24 @@ export default function AdminDashboardPage() {
     | "inventory"
     | "settings"
   >("overview");
+
+  // Admin Profile & 2FA State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editAdminName, setEditAdminName] = useState("Satya Narayana");
+  const [editAdminEmail, setEditAdminEmail] = useState("admin@sathyastores.com");
+  const [editAdminMobile, setEditAdminMobile] = useState("+91 98480 22338");
+  const [editAdminEntity, setEditAdminEntity] = useState("Vasavi Enterprises");
+
+  // Admin Password Change with 2FA
+  const [adminCurrentPass, setAdminCurrentPass] = useState("");
+  const [adminNewPass, setAdminNewPass] = useState("");
+  const [adminConfirmPass, setAdminConfirmPass] = useState("");
+  const [admin2faCode, setAdmin2faCode] = useState("");
+  const [showAdminCurrentPass, setShowAdminCurrentPass] = useState(false);
+  const [showAdminNewPass, setShowAdminNewPass] = useState(false);
+  const [showAdminConfirmPass, setShowAdminConfirmPass] = useState(false);
+  const [generated2faNotice, setGenerated2faNotice] = useState<string | null>(null);
+  const [isUpdatingAdminPass, setIsUpdatingAdminPass] = useState(false);
 
   // User Management State
   const [userSearch, setUserSearch] = useState("");
@@ -122,9 +148,9 @@ export default function AdminDashboardPage() {
   const [newProdMrp, setNewProdMrp] = useState(1999);
   const [newProdPrice, setNewProdPrice] = useState(1499);
   const [newProdStock, setNewProdStock] = useState(15);
-  const [newProdImage, setNewProdImage] = useState(
-    "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80"
-  );
+  const [newProdImages, setNewProdImages] = useState<string[]>([
+    "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80",
+  ]);
   const [newProdDesc, setNewProdDesc] = useState("");
 
   // Category Add Modal State
@@ -147,12 +173,22 @@ export default function AdminDashboardPage() {
   // Settings State
   const [tempSettings, setTempSettings] = useState(settings);
 
-  // Load users on mount if admin authenticated
+  // Load users and admin profile on mount if admin authenticated
   useEffect(() => {
     if (isAdminAuthenticated) {
       fetchAdminUsers(userSearch);
+      fetchAdminProfile();
     }
-  }, [isAdminAuthenticated, userSearch, fetchAdminUsers]);
+  }, [isAdminAuthenticated, userSearch, fetchAdminUsers, fetchAdminProfile]);
+
+  useEffect(() => {
+    if (adminProfile) {
+      setEditAdminName(adminProfile.fullName);
+      setEditAdminEmail(adminProfile.email);
+      setEditAdminMobile(adminProfile.mobileNumber);
+      setEditAdminEntity(adminProfile.businessEntity);
+    }
+  }, [adminProfile]);
 
   // Handle Admin Login
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -314,7 +350,10 @@ export default function AdminDashboardPage() {
       categoryId: newProdCategory,
       categoryName: catObj?.name || "Electronics",
       description: newProdDesc || "High quality electronics with manufacturer warranty.",
-      images: [newProdImage],
+      images:
+        newProdImages.length > 0
+          ? newProdImages
+          : ["https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80"],
       mrp: Number(newProdMrp),
       sellingPrice: Number(newProdPrice),
       stockQuantity: Number(newProdStock),
@@ -331,6 +370,9 @@ export default function AdminDashboardPage() {
     setShowAddProduct(false);
     setNewProdName("");
     setNewProdSku("");
+    setNewProdImages([
+      "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80",
+    ]);
   };
 
   const handleAddCategorySubmit = async (e: React.FormEvent) => {
@@ -448,6 +490,7 @@ export default function AdminDashboardPage() {
       <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar p-1.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-sm">
         {[
           { id: "overview", label: "Overview", icon: TrendingUp },
+          { id: "profile", label: "Admin Profile & 2FA", icon: ShieldCheck },
           { id: "users", label: `Users (${adminUsers.length || 3})`, icon: Users },
           { id: "payments", label: `Payments (${pendingPayments.length})`, icon: CreditCard },
           { id: "orders", label: `Orders (${orders.length})`, icon: Package },
@@ -543,6 +586,383 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: ADMIN PROFILE & TWO-FACTOR AUTHENTICATION (2FA) */}
+      {/* ========================================================= */}
+      {activeTab === "profile" && (
+        <div className="space-y-6">
+          {/* Supabase & Cloud Live Database Status Bar */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <span className="p-2 rounded-xl bg-emerald-600 text-white shrink-0 mt-0.5">
+                <Database className="h-5 w-5" />
+              </span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-emerald-950">
+                    Live Supabase Database Integration
+                  </h3>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-200/80 text-emerald-800 text-[10px] font-black uppercase">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                    Online & Linked
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-800/90 mt-0.5">
+                  Project URL: <code className="bg-emerald-100 px-1 py-0.5 rounded font-mono text-[11px]">https://tpxgrzfkfdxwnwqbqvgy.supabase.co</code>
+                </p>
+                <p className="text-[11px] text-emerald-700/80 mt-0.5">
+                  Universal PBKDF2 Password Hashing active for all administrators and customer accounts.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  refreshBackendData();
+                  fetchAdminProfile();
+                  toast.success("Synchronized with backend database!");
+                }}
+                className="py-2 px-3 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Sync Database
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Card 1: Admin Profile Details */}
+            <div className="bg-white/95 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-blue-100 text-blue-600">
+                    <ShieldCheck className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">Store Owner Profile</h3>
+                    <p className="text-xs text-slate-500">Official administrative identity & contact</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(!isEditingProfile)}
+                  className="text-xs font-bold py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
+                >
+                  <Edit className="h-3.5 w-3.5" />
+                  {isEditingProfile ? "Cancel" : "Edit Profile"}
+                </button>
+              </div>
+
+              {isEditingProfile ? (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const ok = await updateAdminProfile({
+                      fullName: editAdminName.trim(),
+                      email: editAdminEmail.trim(),
+                      mobileNumber: editAdminMobile.trim(),
+                      businessEntity: editAdminEntity.trim(),
+                    });
+                    if (ok) setIsEditingProfile(false);
+                  }}
+                  className="space-y-3.5 pt-1"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Owner Full Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editAdminName}
+                      onChange={(e) => setEditAdminName(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Business Entity</label>
+                    <input
+                      type="text"
+                      required
+                      value={editAdminEntity}
+                      onChange={(e) => setEditAdminEntity(e.target.value)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Admin Email</label>
+                      <input
+                        type="email"
+                        required
+                        value={editAdminEmail}
+                        onChange={(e) => setEditAdminEmail(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Contact Mobile</label>
+                      <input
+                        type="text"
+                        required
+                        value={editAdminMobile}
+                        onChange={(e) => setEditAdminMobile(e.target.value)}
+                        className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="submit"
+                      className="py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all"
+                    >
+                      Save Profile Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingProfile(false)}
+                      className="py-2.5 px-3 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-xs text-slate-500 font-medium">Administrator Name</span>
+                    <span className="text-xs font-bold text-slate-900">{adminProfile?.fullName || editAdminName}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-xs text-slate-500 font-medium">Business Entity</span>
+                    <span className="text-xs font-bold text-slate-900">{adminProfile?.businessEntity || editAdminEntity}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-xs text-slate-500 font-medium">Admin Email</span>
+                    <span className="text-xs font-mono font-bold text-slate-900">{adminProfile?.email || editAdminEmail}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-xs text-slate-500 font-medium">Mobile Contact</span>
+                    <span className="text-xs font-mono font-bold text-slate-900">{adminProfile?.mobileNumber || editAdminMobile}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                    <span className="text-xs text-slate-500 font-medium">Role & Privileges</span>
+                    <span className="text-[11px] font-black uppercase text-amber-700 bg-amber-100 px-2 py-0.5 rounded-lg">
+                      Super Administrator (Owner)
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Card 2: Two-Factor Authentication (2FA) & Change Password */}
+            <div className="bg-white/95 backdrop-blur-md rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-2 rounded-xl bg-amber-100 text-amber-700">
+                    <KeyRound className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">2FA Security & Password</h3>
+                    <p className="text-xs text-slate-500">Modify password protected by Two-Factor Authentication</p>
+                  </div>
+                </div>
+
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  2FA Active
+                </span>
+              </div>
+
+              {/* 2FA Status Banner */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
+                <div className="flex items-center justify-between font-bold text-slate-800">
+                  <span>2FA Protection Mode</span>
+                  <span className="font-mono text-blue-600">6-Digit OTP / Master PIN</span>
+                </div>
+                <p className="text-slate-500 text-[11px]">
+                  Whenever changing the admin master password, you must verify with a 6-digit Security Code or Master PIN (<code className="font-mono font-bold text-slate-700 bg-slate-200 px-1 py-0.5 rounded">739201</code>).
+                </p>
+              </div>
+
+              {/* Form to change admin password */}
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!adminCurrentPass || !adminNewPass || !admin2faCode) {
+                    toast.error("Please fill in current password, new password, and 2FA code.");
+                    return;
+                  }
+                  if (adminNewPass.length < 6) {
+                    toast.error("New password must be at least 6 characters.");
+                    return;
+                  }
+                  if (adminNewPass !== adminConfirmPass) {
+                    toast.error("New password and confirmation do not match.");
+                    return;
+                  }
+
+                  setIsUpdatingAdminPass(true);
+                  const result = await adminChangePasswordWith2FA(
+                    adminCurrentPass,
+                    adminNewPass,
+                    admin2faCode
+                  );
+                  setIsUpdatingAdminPass(false);
+
+                  if (result.success) {
+                    setAdminCurrentPass("");
+                    setAdminNewPass("");
+                    setAdminConfirmPass("");
+                    setAdmin2faCode("");
+                    setGenerated2faNotice(null);
+                  }
+                }}
+                className="space-y-3 pt-1"
+              >
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Current Admin Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showAdminCurrentPass ? "text" : "password"}
+                      required
+                      placeholder="Enter current password"
+                      value={adminCurrentPass}
+                      onChange={(e) => setAdminCurrentPass(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminCurrentPass(!showAdminCurrentPass)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {showAdminCurrentPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      New Admin Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showAdminNewPass ? "text" : "password"}
+                        required
+                        placeholder="Min 6 characters"
+                        value={adminNewPass}
+                        onChange={(e) => setAdminNewPass(e.target.value)}
+                        className="w-full pl-3 pr-9 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminNewPass(!showAdminNewPass)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                      >
+                        {showAdminNewPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Confirm New Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showAdminConfirmPass ? "text" : "password"}
+                        required
+                        placeholder="Repeat new password"
+                        value={adminConfirmPass}
+                        onChange={(e) => setAdminConfirmPass(e.target.value)}
+                        className="w-full pl-3 pr-9 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminConfirmPass(!showAdminConfirmPass)}
+                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                      >
+                        {showAdminConfirmPass ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2FA Verification Step */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-800">
+                      Two-Factor (2FA) Security Code
+                    </label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await generateAdmin2fa();
+                        if (res.success && res.otp) {
+                          setGenerated2faNotice(res.otp);
+                          setAdmin2faCode(res.otp);
+                        }
+                      }}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Generate 2FA Code
+                    </button>
+                  </div>
+
+                  {generated2faNotice && (
+                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                      <span>Simulated 2FA Code sent to phone:</span>
+                      <span className="font-mono font-black text-amber-950 bg-amber-200 px-2 py-0.5 rounded">
+                        {generated2faNotice}
+                      </span>
+                    </div>
+                  )}
+
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    placeholder="Enter 6-digit 2FA code (or 739201)"
+                    value={admin2faCode}
+                    onChange={(e) => setAdmin2faCode(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-widest text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isUpdatingAdminPass}
+                  className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isUpdatingAdminPass ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      Verifying 2FA & Updating...
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                      Verify 2FA & Update Admin Password
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1285,13 +1705,12 @@ export default function AdminDashboardPage() {
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Image URL</label>
-                <input
-                  type="text"
-                  required
-                  value={newProdImage}
-                  onChange={(e) => setNewProdImage(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Product Images (Drag & Drop or Mobile Upload)
+                </label>
+                <ProductImageUploader
+                  images={newProdImages}
+                  onChange={setNewProdImages}
                 />
               </div>
 

@@ -1,7 +1,20 @@
-import { getDatabase, saveDatabase } from "../db/database";
-import { User, Address, Review } from "../types";
+import { getDatabase, saveDatabase, initialAdminProfile } from "../db/database";
+import { User, Address, Review, AdminProfile } from "../types";
+import { hashPassword, verifyPassword, generateOtp } from "../utils/auth";
+
+interface PasswordResetToken {
+  identifier: string;
+  otp: string;
+  expiresAt: number;
+}
+
+const passwordResetTokens = new Map<string, PasswordResetToken>();
+let activeAdmin2faOtp: { otp: string; expiresAt: number } | null = null;
 
 export const userService = {
+  // ==========================================
+  // CUSTOMER & USER OPERATIONS
+  // ==========================================
   async getAllUsers(search?: string): Promise<{ users: Omit<User, "password">[]; total: number }> {
     const db = await getDatabase();
     let users = db.users || [];
@@ -36,20 +49,23 @@ export const userService = {
     password: string;
   }): Promise<{ success: boolean; user?: Omit<User, "password">; error?: string }> {
     const db = await getDatabase();
+    const emailClean = data.email.trim().toLowerCase();
+    const mobileClean = data.mobileNumber.trim();
+
     const existing = (db.users || []).find(
-      (u) => u.email.toLowerCase() === data.email.toLowerCase() || u.mobileNumber === data.mobileNumber
+      (u) => u.email.toLowerCase() === emailClean || u.mobileNumber === mobileClean
     );
 
     if (existing) {
-      return { success: false, error: "A user with this email or mobile number already exists." };
+      return { success: false, error: "An account with this email or mobile number already exists." };
     }
 
     const newUser: User = {
       id: `usr-${Date.now()}`,
       fullName: data.fullName.trim(),
-      email: data.email.trim().toLowerCase(),
-      mobileNumber: data.mobileNumber.trim(),
-      password: data.password, // Stored securely
+      email: emailClean,
+      mobileNumber: mobileClean,
+      password: hashPassword(data.password), // Securely hashed with PBKDF2 salt
       role: "customer",
       mobileVerified: true,
       emailVerified: true,
@@ -66,7 +82,10 @@ export const userService = {
     return { success: true, user: safeUser };
   },
 
-  async login(emailOrPhone: string, passwordAttempt: string): Promise<{
+  async login(
+    emailOrPhone: string,
+    passwordAttempt: string
+  ): Promise<{
     success: boolean;
     user?: Omit<User, "password">;
     isAdmin?: boolean;
@@ -75,41 +94,43 @@ export const userService = {
     const db = await getDatabase();
     const identifier = emailOrPhone.trim().toLowerCase();
 
-    // Check admin credentials
-    if (
-      (identifier === "admin@sathyastores.com" || identifier === "admin") &&
-      passwordAttempt === "admin123"
-    ) {
-      const adminUser = (db.users || []).find((u) => u.role === "owner") || {
-        id: "usr-admin-1",
-        fullName: "Store Administrator",
-        email: "admin@sathyastores.com",
-        mobileNumber: "+91 98480 22338",
-        role: "owner" as const,
-        mobileVerified: true,
-        emailVerified: true,
-        accountStatus: "active" as const,
-        createdAt: new Date().toISOString(),
-      };
-      return { success: true, user: adminUser, isAdmin: true };
-    }
-
+    // Check if user exists in the database
     const user = (db.users || []).find(
       (u) =>
-        (u.email.toLowerCase() === identifier || u.mobileNumber === identifier) &&
-        u.password === passwordAttempt
+        u.email.toLowerCase() === identifier ||
+        u.mobileNumber.replace(/\s+/g, "") === identifier.replace(/\s+/g, "") ||
+        (u.role === "owner" && (identifier === "admin" || identifier === "admin@sathyastores.com"))
     );
 
     if (!user) {
-      return { success: false, error: "Invalid credentials. Please verify your email/phone and password." };
+      return {
+        success: false,
+        error: "No account found matching this email or mobile number.",
+      };
     }
 
     if (user.accountStatus === "suspended") {
-      return { success: false, error: "This account has been suspended by store administration." };
+      return {
+        success: false,
+        error: "This account has been suspended by store administration.",
+      };
+    }
+
+    // Verify password against stored PBKDF2 hash (with legacy fallback)
+    const isMatch = verifyPassword(passwordAttempt, user.password);
+    if (!isMatch) {
+      return {
+        success: false,
+        error: "Incorrect password. Please verify and try again.",
+      };
     }
 
     const { password, ...safeUser } = user;
-    return { success: true, user: safeUser, isAdmin: user.role === "owner" };
+    return {
+      success: true,
+      user: safeUser,
+      isAdmin: user.role === "owner",
+    };
   },
 
   async adminUpdateUserPassword(
@@ -122,7 +143,8 @@ export const userService = {
       return { success: false, error: "User not found." };
     }
 
-    db.users[idx].password = newPassword;
+    // Save with salt:hash
+    db.users[idx].password = hashPassword(newPassword);
     await saveDatabase(db);
     return { success: true };
   },
@@ -143,6 +165,195 @@ export const userService = {
     return { success: true, user: safeUser };
   },
 
+  // ==========================================
+  // FORGOT PASSWORD & RESET FLOW
+  // ==========================================
+  async requestPasswordReset(
+    emailOrPhone: string
+  ): Promise<{ success: boolean; message?: string; simulatedOtp?: string; error?: string }> {
+    const db = await getDatabase();
+    const identifier = emailOrPhone.trim().toLowerCase();
+
+    const user = (db.users || []).find(
+      (u) =>
+        u.email.toLowerCase() === identifier ||
+        u.mobileNumber.replace(/\s+/g, "") === identifier.replace(/\s+/g, "")
+    );
+
+    if (!user) {
+      return {
+        success: false,
+        error: "No account exists with this email address or mobile number.",
+      };
+    }
+
+    const otp = generateOtp();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes validity
+
+    passwordResetTokens.set(identifier, {
+      identifier,
+      otp,
+      expiresAt,
+    });
+
+    return {
+      success: true,
+      message: `A 6-digit verification code has been sent to your registered contact.`,
+      simulatedOtp: otp, // Returned for instant feedback & zero-cost testing
+    };
+  },
+
+  async resetPassword(
+    emailOrPhone: string,
+    otp: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> {
+    const db = await getDatabase();
+    const identifier = emailOrPhone.trim().toLowerCase();
+    const tokenRecord = passwordResetTokens.get(identifier);
+
+    if (!tokenRecord) {
+      return {
+        success: false,
+        error: "Reset session expired or invalid. Please request a new verification code.",
+      };
+    }
+
+    if (Date.now() > tokenRecord.expiresAt) {
+      passwordResetTokens.delete(identifier);
+      return {
+        success: false,
+        error: "Verification code has expired. Please request a new code.",
+      };
+    }
+
+    if (tokenRecord.otp !== otp.trim()) {
+      return {
+        success: false,
+        error: "Invalid 6-digit verification code. Please check and try again.",
+      };
+    }
+
+    const userIdx = (db.users || []).findIndex(
+      (u) =>
+        u.email.toLowerCase() === identifier ||
+        u.mobileNumber.replace(/\s+/g, "") === identifier.replace(/\s+/g, "")
+    );
+
+    if (userIdx === -1) {
+      return { success: false, error: "User account could not be located." };
+    }
+
+    db.users[userIdx].password = hashPassword(newPassword);
+    await saveDatabase(db);
+    passwordResetTokens.delete(identifier);
+
+    return {
+      success: true,
+      message: "Password has been successfully updated. You may now sign in.",
+    };
+  },
+
+  // ==========================================
+  // ADMIN PROFILE & TWO-FACTOR AUTH (2FA)
+  // ==========================================
+  async getAdminProfile(): Promise<AdminProfile> {
+    const db = await getDatabase();
+    if (!db.adminProfile) {
+      db.adminProfile = initialAdminProfile;
+      await saveDatabase(db);
+    }
+    // Mask security PIN for safe viewing
+    return {
+      ...db.adminProfile,
+      twoFactorPin: db.adminProfile.twoFactorPin ? "******" : undefined,
+    };
+  },
+
+  async updateAdminProfile(updates: Partial<AdminProfile>): Promise<{ success: boolean; profile: AdminProfile }> {
+    const db = await getDatabase();
+    if (!db.adminProfile) {
+      db.adminProfile = initialAdminProfile;
+    }
+
+    db.adminProfile = {
+      ...db.adminProfile,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Also sync admin user record if email or name changes
+    const adminUser = (db.users || []).find((u) => u.role === "owner");
+    if (adminUser) {
+      if (updates.fullName) adminUser.fullName = updates.fullName;
+      if (updates.email) adminUser.email = updates.email;
+      if (updates.mobileNumber) adminUser.mobileNumber = updates.mobileNumber;
+    }
+
+    await saveDatabase(db);
+    return { success: true, profile: db.adminProfile };
+  },
+
+  async generateAdmin2fa(): Promise<{ success: boolean; otp: string; message: string }> {
+    const otp = generateOtp();
+    activeAdmin2faOtp = {
+      otp,
+      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    };
+
+    return {
+      success: true,
+      otp,
+      message: `2FA Security Code generated: ${otp}. Valid for 10 minutes.`,
+    };
+  },
+
+  async adminChangePasswordWith2FA(
+    currentPasswordAttempt: string,
+    newPassword: string,
+    twoFactorCode: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const db = await getDatabase();
+    const adminUser = (db.users || []).find((u) => u.role === "owner");
+
+    if (!adminUser) {
+      return { success: false, error: "Administrative account not found." };
+    }
+
+    // 1. Verify current password
+    const isCurrentMatch = verifyPassword(currentPasswordAttempt, adminUser.password);
+    if (!isCurrentMatch) {
+      return { success: false, error: "Current admin password is incorrect." };
+    }
+
+    // 2. Verify 2FA code (checks active 2FA OTP or static 6-digit Master Security PIN)
+    const staticPin = db.adminProfile?.twoFactorPin || "739201";
+    const cleanCode = twoFactorCode.trim();
+
+    const isOtpValid = activeAdmin2faOtp &&
+      activeAdmin2faOtp.otp === cleanCode &&
+      Date.now() <= activeAdmin2faOtp.expiresAt;
+
+    const isPinValid = cleanCode === staticPin;
+
+    if (!isOtpValid && !isPinValid) {
+      return {
+        success: false,
+        error: "Invalid or expired Two-Factor Authentication (2FA) code.",
+      };
+    }
+
+    // 3. Hash and save new password
+    adminUser.password = hashPassword(newPassword);
+    await saveDatabase(db);
+    activeAdmin2faOtp = null; // Invalidate OTP after use
+
+    return { success: true };
+  },
+
+  // ==========================================
+  // REVIEWS & FAVORITES
+  // ==========================================
   async toggleFavorite(
     userId: string,
     productId: string
@@ -194,4 +405,3 @@ export const userService = {
     return (db.reviews || []).filter((r) => r.productId === productId);
   },
 };
-

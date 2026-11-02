@@ -44,7 +44,37 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Orders Table (Immutable Snapshot)
+-- 3. Users Table (Customer & Admin Accounts with PBKDF2 Hashed Passwords)
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  full_name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  mobile_number TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL, -- Stored as `<salt>:<pbkdf2_hash>`
+  role TEXT DEFAULT 'customer', -- 'customer' | 'owner'
+  mobile_verified BOOLEAN DEFAULT true,
+  email_verified BOOLEAN DEFAULT true,
+  account_status TEXT DEFAULT 'active', -- 'active' | 'suspended'
+  favorites TEXT[] DEFAULT '{}',
+  addresses JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Admin Profile & 2FA Configuration
+CREATE TABLE IF NOT EXISTS admin_profile (
+  id TEXT PRIMARY KEY DEFAULT 'admin-master',
+  full_name TEXT NOT NULL DEFAULT 'Satya Narayana',
+  email TEXT NOT NULL DEFAULT 'admin@sathyastores.com',
+  mobile_number TEXT NOT NULL DEFAULT '+91 98480 22338',
+  business_entity TEXT NOT NULL DEFAULT 'Vasavi Enterprises',
+  role TEXT NOT NULL DEFAULT 'owner',
+  two_factor_enabled BOOLEAN DEFAULT true,
+  two_factor_method TEXT DEFAULT 'OTP_SMS_EMAIL',
+  two_factor_pin TEXT DEFAULT '739201',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Orders Table (Immutable Snapshot)
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
   order_number TEXT UNIQUE NOT NULL,
@@ -72,7 +102,7 @@ CREATE TABLE IF NOT EXISTS orders (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Inventory Movements (Audit Log)
+-- 6. Inventory Movements (Audit Log)
 CREATE TABLE IF NOT EXISTS inventory_movements (
   id TEXT PRIMARY KEY,
   product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
@@ -88,7 +118,44 @@ CREATE TABLE IF NOT EXISTS inventory_movements (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Store Settings Table
+-- 7. Reviews Table
+CREATE TABLE IF NOT EXISTS reviews (
+  id TEXT PRIMARY KEY,
+  product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  rating NUMERIC NOT NULL,
+  title TEXT,
+  comment TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 8. Coupons Table
+CREATE TABLE IF NOT EXISTS coupons (
+  id TEXT PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  discount_type TEXT NOT NULL, -- 'percentage' | 'fixed'
+  discount_value NUMERIC NOT NULL,
+  min_order_value NUMERIC DEFAULT 0,
+  max_discount_amount NUMERIC,
+  status TEXT DEFAULT 'active',
+  expiry_date TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. Marquees Table
+CREATE TABLE IF NOT EXISTS marquees (
+  id TEXT PRIMARY KEY,
+  text TEXT NOT NULL,
+  link TEXT,
+  position TEXT DEFAULT 'header', -- 'header' | 'hero_top' | 'footer'
+  background_color TEXT,
+  text_color TEXT,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Store Settings Table
 CREATE TABLE IF NOT EXISTS store_settings (
   id TEXT PRIMARY KEY DEFAULT 'primary_store_settings',
   store_name TEXT DEFAULT 'Satya Stores',
@@ -108,16 +175,38 @@ CREATE TABLE IF NOT EXISTS store_settings (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 11. Homepage Sections Table
+CREATE TABLE IF NOT EXISTS homepage_sections (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  type TEXT NOT NULL,
+  item_ids TEXT[] DEFAULT '{}',
+  display_order INT DEFAULT 0,
+  status TEXT DEFAULT 'active'
+);
+
 -- Enable Row Level Security (RLS) with open read/write for free anon key
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_profile ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE coupons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marquees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE store_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE homepage_sections ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public read-write for categories" ON categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for products" ON products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for users" ON users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for admin_profile" ON admin_profile FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for orders" ON orders FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for inventory_movements" ON inventory_movements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for reviews" ON reviews FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for coupons" ON coupons FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow public read-write for marquees" ON marquees FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for store_settings" ON store_settings FOR ALL USING (true) WITH CHECK (true);
-
+CREATE POLICY "Allow public read-write for homepage_sections" ON homepage_sections FOR ALL USING (true) WITH CHECK (true);

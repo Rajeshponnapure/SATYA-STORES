@@ -16,6 +16,7 @@ import {
   MarqueeItem,
   Review,
   HomepageSection,
+  AdminProfile,
 } from "@/types";
 import {
   initialProducts,
@@ -77,6 +78,8 @@ interface StoreContextType {
   toggleFavorite: (productId: string) => Promise<void>;
   submitReview: (productId: string, rating: number, title: string, comment: string) => Promise<boolean>;
   fetchProductReviews: (productId: string) => Promise<Review[]>;
+  requestPasswordReset: (emailOrPhone: string) => Promise<{ success: boolean; message?: string; simulatedOtp?: string; error?: string }>;
+  resetPasswordWithOtp: (emailOrPhone: string, otp: string, newPassword: string) => Promise<{ success: boolean; message?: string; error?: string }>;
 
   // Admin Auth & Management
   adminLogin: (password: string, usernameOrEmail?: string) => Promise<{ success: boolean; error?: string }>;
@@ -84,6 +87,12 @@ interface StoreContextType {
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
   adminUpdateUserPassword: (userId: string, newPass: string) => Promise<boolean>;
+  adminProfile: AdminProfile | null;
+  fetchAdminProfile: () => Promise<AdminProfile | null>;
+  updateAdminProfile: (updates: Partial<AdminProfile>) => Promise<boolean>;
+  generateAdmin2fa: () => Promise<{ success: boolean; otp?: string; message?: string }>;
+  adminChangePasswordWith2FA: (currentPassword: string, newPassword: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
+  uploadImage: (fileName: string, fileData: string) => Promise<{ success: boolean; url?: string; error?: string }>;
 
   // Admin Catalog & Operations
   addProduct: (product: Omit<Product, "id">) => Promise<boolean>;
@@ -122,6 +131,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
 
   // Coupons
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -628,6 +638,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return [];
   };
 
+  const requestPasswordReset = async (
+    emailOrPhone: string
+  ): Promise<{ success: boolean; message?: string; simulatedOtp?: string; error?: string }> => {
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailOrPhone }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "Verification code dispatched!");
+        return { success: true, message: data.message, simulatedOtp: data.simulatedOtp };
+      }
+      toast.error(data.error || "Could not request password reset");
+      return { success: false, error: data.error };
+    } catch {
+      toast.error("Network error during reset request");
+      return { success: false, error: "Network error" };
+    }
+  };
+
+  const resetPasswordWithOtp = async (
+    emailOrPhone: string,
+    otp: string,
+    newPassword: string
+  ): Promise<{ success: boolean; message?: string; error?: string }> => {
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emailOrPhone, otp, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "Password updated successfully!");
+        return { success: true, message: data.message };
+      }
+      toast.error(data.error || "Failed to reset password");
+      return { success: false, error: data.error };
+    } catch {
+      toast.error("Network error resetting password");
+      return { success: false, error: "Network error" };
+    }
+  };
+
   // ==========================================
   // ADMIN AUTH & CONTROLS
   // ==========================================
@@ -694,6 +750,98 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       toast.error("Network error");
       return false;
+    }
+  };
+
+  const fetchAdminProfile = useCallback(async (): Promise<AdminProfile | null> => {
+    try {
+      const res = await fetch("/api/admin/profile");
+      const data = await res.json();
+      if (res.ok && data.profile) {
+        setAdminProfile(data.profile);
+        return data.profile;
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const updateAdminProfile = async (updates: Partial<AdminProfile>): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/admin/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAdminProfile(data.profile);
+        toast.success("Admin Profile saved successfully!");
+        return true;
+      }
+      toast.error(data.error || "Failed to update admin profile");
+      return false;
+    } catch {
+      toast.error("Network error updating profile");
+      return false;
+    }
+  };
+
+  const generateAdmin2fa = async (): Promise<{ success: boolean; otp?: string; message?: string }> => {
+    try {
+      const res = await fetch("/api/admin/generate-2fa", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.info(data.message || `2FA Code: ${data.otp}`);
+        return { success: true, otp: data.otp, message: data.message };
+      }
+      toast.error(data.error || "Failed to generate 2FA code");
+      return { success: false };
+    } catch {
+      return { success: false };
+    }
+  };
+
+  const adminChangePasswordWith2FA = async (
+    currentPassword: string,
+    newPassword: string,
+    twoFactorCode: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/admin/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword, twoFactorCode }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success("Admin password successfully updated with 2FA verification!");
+        return { success: true };
+      }
+      toast.error(data.error || "Failed to update password");
+      return { success: false, error: data.error };
+    } catch {
+      toast.error("Network error updating password");
+      return { success: false, error: "Network error" };
+    }
+  };
+
+  const uploadImage = async (
+    fileName: string,
+    fileData: string
+  ): Promise<{ success: boolean; url?: string; error?: string }> => {
+    try {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName, fileData }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        return { success: true, url: data.url };
+      }
+      return { success: true, url: fileData };
+    } catch {
+      return { success: true, url: fileData };
     }
   };
 
@@ -985,11 +1133,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         toggleFavorite,
         submitReview,
         fetchProductReviews,
+        requestPasswordReset,
+        resetPasswordWithOtp,
         adminLogin,
         adminLogout,
         adminUsers,
         fetchAdminUsers,
         adminUpdateUserPassword,
+        adminProfile,
+        fetchAdminProfile,
+        updateAdminProfile,
+        generateAdmin2fa,
+        adminChangePasswordWith2FA,
+        uploadImage,
         addProduct,
         updateProduct,
         deleteProduct,

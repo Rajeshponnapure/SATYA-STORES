@@ -1,5 +1,18 @@
 export type UserRole = "customer" | "owner";
 
+export interface AdminProfile {
+  id: string;
+  fullName: string;
+  email: string;
+  mobileNumber: string;
+  businessEntity: string;
+  role: "owner";
+  twoFactorEnabled: boolean;
+  twoFactorMethod: "OTP_SMS_EMAIL" | "SECURITY_PIN";
+  twoFactorPin?: string;
+  updatedAt: string;
+}
+
 export interface User {
   id: string;
   fullName: string;
