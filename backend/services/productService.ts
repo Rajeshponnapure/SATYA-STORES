@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from "../db/database";
-import { Product } from "@/types";
+import { Product } from "../types";
 
 export const productService = {
   async getAllProducts(): Promise<Product[]> {
@@ -21,3 +21,4 @@ export const productService = {
     return { success: true, product: newProduct };
   },
 };
+

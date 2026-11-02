@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from "../db/database";
-import { InventoryMovement, Product } from "@/types";
+import { InventoryMovement, Product } from "../types";
 
 export const inventoryService = {
   async adjustStock(payload: {
@@ -45,3 +45,4 @@ export const inventoryService = {
     return db.inventoryMovements;
   },
 };
+

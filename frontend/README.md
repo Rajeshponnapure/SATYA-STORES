@@ -40,3 +40,4 @@ src/
 - **Grid**: Strict 2-column layout (`grid-cols-2`) on mobile viewports (< 640px).
 - **Touch**: Minimum 44px–48px thumb touch targets.
 - **Eye-Comfort**: Soft alabaster canvas (`#F4F6F9`) with 0.05 opacity animated indigo grid lines.
+

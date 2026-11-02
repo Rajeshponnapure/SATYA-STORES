@@ -1,13 +1,13 @@
 import fs from "fs";
 import path from "path";
-import { Product, Category, Order, StoreSettings, InventoryMovement, Promotion } from "@/types";
+import { Product, Category, Order, StoreSettings, InventoryMovement, Promotion } from "../types";
 import {
   initialProducts,
   initialCategories,
   initialOrders,
   initialStoreSettings,
   initialPromotions,
-} from "@/lib/initialData";
+} from "./initialData";
 import { supabase, isSupabaseConfigured } from "./supabase";
 
 export interface DatabaseSchema {
@@ -90,3 +90,4 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
   ensureDbFile();
   fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), "utf-8");
 }
+

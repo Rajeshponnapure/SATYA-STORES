@@ -43,3 +43,4 @@ Located under `src/app/api/`:
 ## 💾 Zero-Budget Database Setup
 1. **Local Mode (Default)**: Automatically runs against `data/database.json`. Zero accounts, zero credit card, 100% free forever.
 2. **Supabase Cloud Mode**: Put your free Project URL and Anon Key in `.env.local` and run `supabase-schema.sql` in the Supabase SQL editor.
+

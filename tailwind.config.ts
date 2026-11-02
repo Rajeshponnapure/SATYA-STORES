@@ -2,9 +2,8 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./frontend/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -25,6 +24,7 @@ const config: Config = {
         "grid-drift": "gridDrift 20s ease-in-out infinite alternate",
         "pulse-subtle": "pulseSubtle 6s ease-in-out infinite",
         "cart-bump": "cartBump 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+        "shimmer-sweep": "shimmerSweep 3s linear infinite",
       },
       keyframes: {
         gridDrift: {
@@ -39,6 +39,10 @@ const config: Config = {
           "0%, 100%": { transform: "scale(1)" },
           "50%": { transform: "scale(1.25)" },
         },
+        shimmerSweep: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
       },
     },
   },
@@ -46,4 +50,3 @@ const config: Config = {
 };
 
 export default config;
-

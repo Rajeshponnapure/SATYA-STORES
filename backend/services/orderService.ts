@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from "../db/database";
-import { Order } from "@/types";
+import { Order } from "../types";
 
 export const orderService = {
   async getAllOrders(): Promise<Order[]> {
@@ -82,3 +82,4 @@ export const orderService = {
     return { success: true, order: newOrder };
   },
 };
+

@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from "../db/database";
-import { Order, DeliveryStatus } from "@/types";
+import { Order, DeliveryStatus } from "../types";
 
 export const deliveryService = {
   async updateDelivery(payload: {
@@ -25,3 +25,4 @@ export const deliveryService = {
     return { success: true, order };
   },
 };
+

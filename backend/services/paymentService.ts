@@ -1,5 +1,5 @@
 import { getDatabase, saveDatabase } from "../db/database";
-import { Order } from "@/types";
+import { Order } from "../types";
 
 export const paymentService = {
   async submitPaymentProof(
@@ -86,3 +86,4 @@ export const paymentService = {
     return { success: true, order };
   },
 };
+
