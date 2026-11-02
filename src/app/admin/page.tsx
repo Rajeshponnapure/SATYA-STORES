@@ -87,46 +87,46 @@ export default function AdminDashboardPage() {
     (p) => p.stockQuantity - p.reservedQuantity <= p.lowStockThreshold
   );
 
-  const handleVerify = (orderId: string) => {
-    verifyPayment(orderId);
+  const handleVerify = async (orderId: string) => {
+    await verifyPayment(orderId);
   };
 
-  const handleRejectConfirm = (e: React.FormEvent) => {
+  const handleRejectConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!rejectOrderId || !rejectReason.trim()) {
       toast.error("Please enter a mandatory rejection reason.");
       return;
     }
-    rejectPayment(rejectOrderId, rejectReason.trim());
+    await rejectPayment(rejectOrderId, rejectReason.trim());
     setRejectOrderId(null);
     setRejectReason("");
   };
 
-  const handleDeliverySubmit = (e: React.FormEvent) => {
+  const handleDeliverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!deliveryOrderId) return;
-    updateDeliveryStatus(deliveryOrderId, newDeliveryStatus, deliveryReference);
+    await updateDeliveryStatus(deliveryOrderId, newDeliveryStatus, deliveryReference);
     setDeliveryOrderId(null);
     setDeliveryReference("");
   };
 
-  const handleAdjustStockSubmit = (e: React.FormEvent) => {
+  const handleAdjustStockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustProductId) return;
-    adjustStock(adjustProductId, adjustNewQty, adjustReasonText || "Manual stock count adjustment");
+    await adjustStock(adjustProductId, adjustNewQty, adjustReasonText || "Manual stock count adjustment");
     setAdjustProductId(null);
     setAdjustReasonText("");
   };
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(tempSettings);
+    await updateSettings(tempSettings);
   };
 
-  const handleAddProductSubmit = (e: React.FormEvent) => {
+  const handleAddProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cat = categories.find((c) => c.id === newProdCategory);
-    addProduct({
+    await addProduct({
       productName: newProdName,
       slug: newProdName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       sku: newProdSku || `SAT-${Date.now().toString().slice(-4)}`,
@@ -1186,3 +1186,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+

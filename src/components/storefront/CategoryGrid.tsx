@@ -52,3 +52,4 @@ export function CategoryGrid() {
     </div>
   );
 }
+

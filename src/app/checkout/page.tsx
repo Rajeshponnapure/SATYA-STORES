@@ -66,8 +66,8 @@ export default function CheckoutPage() {
     setStep("payment");
   };
 
-  const handleConfirmAndProceedToPayment = () => {
-    const order = createOrder({
+  const handleConfirmAndProceedToPayment = async () => {
+    const order = await createOrder({
       recipientName,
       mobileNumber,
       addressLine1,
@@ -85,7 +85,7 @@ export default function CheckoutPage() {
     }
   };
 
-  const handleUtrSubmit = (e: React.FormEvent) => {
+  const handleUtrSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createdOrderId) return;
 
@@ -94,7 +94,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    const success = submitPaymentDetails(
+    const success = await submitPaymentDetails(
       createdOrderId,
       utrNumber,
       screenshotUrl || "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=600&q=80"
@@ -547,3 +547,4 @@ export default function CheckoutPage() {
     </div>
   );
 }
+

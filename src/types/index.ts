@@ -210,3 +210,4 @@ export interface StoreSettings {
   standardShippingFee: number;
   reservationExpiryMinutes: number;
 }
+

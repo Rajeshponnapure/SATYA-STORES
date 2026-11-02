@@ -10,7 +10,6 @@ import {
   User,
   Promotion,
   InventoryMovement,
-  PaymentStatus,
   OrderStatus,
   DeliveryStatus,
 } from "@/types";
@@ -32,7 +31,8 @@ interface StoreContextType {
   settings: StoreSettings;
   currentUser: User | null;
   inventoryMovements: InventoryMovement[];
-  
+  isLoadingBackend: boolean;
+
   // Cart Actions
   addToCart: (product: Product, variantSku?: string, quantity?: number) => void;
   removeFromCart: (productId: string, variantSku?: string) => void;
@@ -51,36 +51,38 @@ interface StoreContextType {
     state: string;
     postalCode: string;
     paymentMethod: "UPI" | "BANK_TRANSFER";
-  }) => Order | null;
+  }) => Promise<Order | null>;
+
   submitPaymentDetails: (
     orderId: string,
     utr: string,
     evidenceUrl?: string
-  ) => boolean;
+  ) => Promise<boolean>;
 
   // Owner Management Actions
-  verifyPayment: (orderId: string) => void;
-  rejectPayment: (orderId: string, reason: string) => void;
+  verifyPayment: (orderId: string) => Promise<void>;
+  rejectPayment: (orderId: string, reason: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
   updateDeliveryStatus: (
     orderId: string,
     status: DeliveryStatus,
     manualReference?: string,
     notes?: string
-  ) => void;
+  ) => Promise<void>;
   adjustStock: (
     productId: string,
     newQuantity: number,
     reason: string
-  ) => void;
-  addProduct: (product: Omit<Product, "id">) => void;
+  ) => Promise<void>;
+  addProduct: (product: Omit<Product, "id">) => Promise<void>;
   updateProduct: (id: string, updates: Partial<Product>) => void;
-  updateSettings: (newSettings: Partial<StoreSettings>) => void;
+  updateSettings: (newSettings: Partial<StoreSettings>) => Promise<void>;
 
   // Auth / Role Switching
   loginAsCustomer: (name?: string, mobile?: string) => void;
   loginAsOwner: () => void;
   logout: () => void;
+  refreshBackendData: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -118,40 +120,63 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<StoreSettings>(initialStoreSettings);
   const [currentUser, setCurrentUser] = useState<User | null>(defaultCustomer);
   const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
+  const [isLoadingBackend, setIsLoadingBackend] = useState<boolean>(false);
 
-  // Load persisted state from localStorage on client mount
+  // Sync with actual Backend API on mount
+  const refreshBackendData = async () => {
+    setIsLoadingBackend(true);
+    try {
+      const [prodRes, ordRes, setRes] = await Promise.all([
+        fetch("/api/products"),
+        fetch("/api/orders"),
+        fetch("/api/settings"),
+      ]);
+
+      if (prodRes.ok) {
+        const prodData = await prodRes.json();
+        if (prodData.products && prodData.products.length > 0) {
+          setProducts(prodData.products);
+        }
+      }
+
+      if (ordRes.ok) {
+        const ordData = await ordRes.json();
+        if (ordData.orders && ordData.orders.length > 0) {
+          setOrders(ordData.orders);
+        }
+      }
+
+      if (setRes.ok) {
+        const setData = await setRes.json();
+        if (setData.settings) {
+          setSettings(setData.settings);
+        }
+      }
+    } catch {
+      // Fallback to initial local state
+    } finally {
+      setIsLoadingBackend(false);
+    }
+  };
+
   useEffect(() => {
     try {
       const storedCart = localStorage.getItem("satya_cart");
       if (storedCart) setCart(JSON.parse(storedCart));
 
-      const storedOrders = localStorage.getItem("satya_orders");
-      if (storedOrders) setOrders(JSON.parse(storedOrders));
-
-      const storedProducts = localStorage.getItem("satya_products");
-      if (storedProducts) setProducts(JSON.parse(storedProducts));
-
       const storedUser = localStorage.getItem("satya_user");
       if (storedUser) setCurrentUser(JSON.parse(storedUser));
     } catch {
-      // Ignore parse errors on first load
+      // Ignore
     }
+
+    refreshBackendData();
   }, []);
 
   // Save Cart updates to localStorage
   useEffect(() => {
     localStorage.setItem("satya_cart", JSON.stringify(cart));
   }, [cart]);
-
-  // Save Orders updates to localStorage
-  useEffect(() => {
-    localStorage.setItem("satya_orders", JSON.stringify(orders));
-  }, [orders]);
-
-  // Save Products updates to localStorage
-  useEffect(() => {
-    localStorage.setItem("satya_products", JSON.stringify(products));
-  }, [products]);
 
   // Cart Calculations
   const cartTotal = useMemo(() => {
@@ -164,7 +189,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Cart Operations
   const addToCart = (product: Product, variantSku?: string, quantity: number = 1) => {
-    // Check stock
     const availableStock = product.stockQuantity - product.reservedQuantity;
     if (availableStock <= 0) {
       toast.error("Sorry, this item is currently out of stock.");
@@ -240,8 +264,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCart([]);
   };
 
-  // Order Placement & Concurrency-Safe Reservation
-  const createOrder = (orderData: {
+  // Order Placement & Backend Atomic Reservation
+  const createOrder = async (orderData: {
     recipientName: string;
     mobileNumber: string;
     addressLine1: string;
@@ -250,56 +274,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     state: string;
     postalCode: string;
     paymentMethod: "UPI" | "BANK_TRANSFER";
-  }): Order | null => {
+  }): Promise<Order | null> => {
     if (cart.length === 0) {
       toast.error("Your cart is empty.");
       return null;
     }
 
-    // Validate stock for all items
-    for (const item of cart) {
-      const liveProduct = products.find((p) => p.id === item.productId);
-      if (!liveProduct) {
-        toast.error(`Product not found.`);
-        return null;
-      }
-      const freeStock = liveProduct.stockQuantity - liveProduct.reservedQuantity;
-      if (freeStock < item.quantity) {
-        toast.error(
-          `Insufficient stock for "${liveProduct.productName}". Only ${freeStock} left.`
-        );
-        return null;
-      }
-    }
-
-    // Atomic Reservation: Increase reservedQuantity for all ordered products
-    setProducts((prev) =>
-      prev.map((prod) => {
-        const cartMatch = cart.find((c) => c.productId === prod.id);
-        if (cartMatch) {
-          return {
-            ...prod,
-            reservedQuantity: prod.reservedQuantity + cartMatch.quantity,
-          };
-        }
-        return prod;
-      })
-    );
-
-    const subtotal = cartTotal;
-    const shippingCharge =
-      subtotal >= settings.freeShippingThreshold ? 0 : settings.standardShippingFee;
-    const totalAmount = subtotal + shippingCharge;
-    const newOrderNumber = `SAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber: newOrderNumber,
-      userId: currentUser?.id || "guest-user",
-      customerName: orderData.recipientName,
-      customerMobile: orderData.mobileNumber,
-      customerEmail: currentUser?.email || "customer@example.com",
-      itemsSnapshot: cart.map((item) => ({
+    try {
+      const itemsPayload = cart.map((item) => ({
         productId: item.productId,
         productName: item.product.productName,
         sku: item.product.sku,
@@ -311,139 +293,143 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         mrp: item.product.mrp,
         quantity: item.quantity,
         image: item.product.images[0] || "",
-      })),
-      shippingAddressSnapshot: {
-        id: `addr-${Date.now()}`,
-        userId: currentUser?.id || "guest-user",
-        recipientName: orderData.recipientName,
-        mobileNumber: orderData.mobileNumber,
-        addressLine1: orderData.addressLine1,
-        addressLine2: orderData.addressLine2,
-        city: orderData.city,
-        state: orderData.state,
-        postalCode: orderData.postalCode,
-        isDefault: true,
-      },
-      subtotal,
-      discount: 0,
-      shippingCharge,
-      totalAmount,
-      orderStatus: "Order Created",
-      paymentStatus: "Awaiting Payment",
-      deliveryStatus: "Not Arranged",
-      paymentMethod: orderData.paymentMethod,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      }));
 
-    setOrders((prev) => [newOrder, ...prev]);
-    clearCart();
-    toast.success(`Order ${newOrderNumber} created successfully! Please submit payment reference.`);
-    return newOrder;
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: itemsPayload,
+          address: {
+            ...orderData,
+            userId: currentUser?.id || "guest-user",
+            isDefault: true,
+          },
+          paymentMethod: orderData.paymentMethod,
+          userId: currentUser?.id,
+          customerEmail: currentUser?.email,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to create order on backend");
+        return null;
+      }
+
+      const newOrder = data.order as Order;
+      setOrders((prev) => [newOrder, ...prev]);
+
+      // Update reserved stock locally
+      setProducts((prev) =>
+        prev.map((prod) => {
+          const match = cart.find((c) => c.productId === prod.id);
+          if (match) {
+            return {
+              ...prod,
+              reservedQuantity: prod.reservedQuantity + match.quantity,
+            };
+          }
+          return prod;
+        })
+      );
+
+      clearCart();
+      toast.success(`Order ${newOrder.orderNumber} created & stored in database!`);
+      return newOrder;
+    } catch (err: any) {
+      toast.error("Network error while creating order");
+      return null;
+    }
   };
 
-  // Submit UTR Reference
-  const submitPaymentDetails = (
+  // Submit UTR Reference to Backend
+  const submitPaymentDetails = async (
     orderId: string,
     utr: string,
     evidenceUrl?: string
-  ) => {
+  ): Promise<boolean> => {
     if (!utr || utr.trim().length < 6) {
-      toast.error("Please enter a valid 12-digit UPI reference (UTR) or Bank transaction number.");
+      toast.error("Please enter a valid 12-digit UPI reference (UTR) or Bank reference number.");
       return false;
     }
 
-    setOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id === orderId) {
-          return {
-            ...ord,
-            paymentReference: utr.trim(),
-            paymentEvidenceUrl: evidenceUrl || ord.paymentEvidenceUrl,
-            paymentStatus: "Verification Pending",
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return ord;
-      })
-    );
+    try {
+      const res = await fetch(`/api/orders/${orderId}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ utr, evidenceUrl }),
+      });
 
-    toast.success("Payment details submitted! Awaiting store owner verification.");
-    return true;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to submit payment details");
+        return false;
+      }
+
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? data.order : ord))
+      );
+
+      toast.success("Payment details saved in backend! Awaiting store owner verification.");
+      return true;
+    } catch {
+      toast.error("Failed to connect to backend");
+      return false;
+    }
   };
 
-  // Owner: Verify Payment
-  const verifyPayment = (orderId: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) return;
+  // Owner: Verify Payment on Backend
+  const verifyPayment = async (orderId: string) => {
+    try {
+      const res = await fetch("/api/admin/payments/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
 
-    // Finalize stock deduction: deduct stockQuantity and clear reservedQuantity
-    setProducts((prev) =>
-      prev.map((prod) => {
-        const itemMatch = targetOrder.itemsSnapshot.find((i) => i.productId === prod.id);
-        if (itemMatch) {
-          return {
-            ...prod,
-            stockQuantity: Math.max(0, prod.stockQuantity - itemMatch.quantity),
-            reservedQuantity: Math.max(0, prod.reservedQuantity - itemMatch.quantity),
-          };
-        }
-        return prod;
-      })
-    );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to verify payment on backend");
+        return;
+      }
 
-    // Update Order & Payment Status
-    setOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id === orderId) {
-          return {
-            ...ord,
-            paymentStatus: "Verified",
-            orderStatus: "Order Confirmed",
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return ord;
-      })
-    );
+      // Update order and refresh products to reflect finalized physical deduction
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? data.order : ord))
+      );
 
-    toast.success(`Payment for Order #${targetOrder.orderNumber} VERIFIED.`);
+      refreshBackendData();
+      toast.success(`Payment VERIFIED in database.`);
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
-  // Owner: Reject Payment
-  const rejectPayment = (orderId: string, reason: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) return;
+  // Owner: Reject Payment on Backend
+  const rejectPayment = async (orderId: string, reason: string) => {
+    try {
+      const res = await fetch("/api/admin/payments/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, reason }),
+      });
 
-    // Release stock reservation
-    setProducts((prev) =>
-      prev.map((prod) => {
-        const itemMatch = targetOrder.itemsSnapshot.find((i) => i.productId === prod.id);
-        if (itemMatch) {
-          return {
-            ...prod,
-            reservedQuantity: Math.max(0, prod.reservedQuantity - itemMatch.quantity),
-          };
-        }
-        return prod;
-      })
-    );
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to reject payment on backend");
+        return;
+      }
 
-    setOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id === orderId) {
-          return {
-            ...ord,
-            paymentStatus: "Rejected",
-            rejectionReason: reason,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return ord;
-      })
-    );
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? data.order : ord))
+      );
 
-    toast.error(`Payment rejected for Order #${targetOrder.orderNumber}: ${reason}`);
+      refreshBackendData();
+      toast.error(`Payment rejected in database: ${reason}`);
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
   // Owner: Update Order Status
@@ -458,78 +444,100 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast.success(`Order status updated to "${status}"`);
   };
 
-  // Owner: Update Delivery Status
-  const updateDeliveryStatus = (
+  // Owner: Update Delivery on Backend
+  const updateDeliveryStatus = async (
     orderId: string,
     status: DeliveryStatus,
     manualReference?: string,
     notes?: string
   ) => {
-    setOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id === orderId) {
-          return {
-            ...ord,
-            deliveryStatus: status,
-            manualDeliveryReference: manualReference || ord.manualDeliveryReference,
-            deliveryNotes: notes || ord.deliveryNotes,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-        return ord;
-      })
-    );
-    toast.success(`Delivery status updated to "${status}"`);
+    try {
+      const res = await fetch("/api/admin/deliveries", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          deliveryStatus: status,
+          manualReference,
+          notes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to update delivery status");
+        return;
+      }
+
+      setOrders((prev) =>
+        prev.map((ord) => (ord.id === orderId ? data.order : ord))
+      );
+      toast.success(`Delivery status updated to "${status}" in backend.`);
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
-  // Owner: Manual Stock Adjustment
-  const adjustStock = (
+  // Owner: Manual Stock Adjustment on Backend
+  const adjustStock = async (
     productId: string,
     newQuantity: number,
     reason: string
   ) => {
-    setProducts((prev) =>
-      prev.map((prod) => {
-        if (prod.id === productId) {
-          const prevQty = prod.stockQuantity;
-          const diff = newQuantity - prevQty;
+    try {
+      const res = await fetch("/api/admin/inventory/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          newQuantity,
+          reason,
+          performedBy: currentUser?.fullName || "Store Owner",
+        }),
+      });
 
-          // Record movement
-          const movement: InventoryMovement = {
-            id: `mov-${Date.now()}`,
-            productId: prod.id,
-            productName: prod.productName,
-            sku: prod.sku,
-            movementType: "MANUAL_ADJUSTMENT",
-            quantity: Math.abs(diff),
-            previousQuantity: prevQty,
-            newQuantity: newQuantity,
-            reason: reason || "Manual stock count adjustment",
-            performedBy: currentUser?.fullName || "Store Owner",
-            createdAt: new Date().toISOString(),
-          };
-          setInventoryMovements((m) => [movement, ...m]);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to adjust stock on backend");
+        return;
+      }
 
-          return {
-            ...prod,
-            stockQuantity: Math.max(0, newQuantity),
-          };
-        }
-        return prod;
-      })
-    );
-    toast.success(`Stock updated to ${newQuantity} units.`);
+      setProducts((prev) =>
+        prev.map((p) => (p.id === productId ? data.product : p))
+      );
+
+      if (data.movement) {
+        setInventoryMovements((m) => [data.movement, ...m]);
+      }
+
+      toast.success(`Stock updated to ${newQuantity} units in database.`);
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
-  // Add Product
-  const addProduct = (newProd: Omit<Product, "id">) => {
-    const id = `prod-${Date.now()}`;
-    const product: Product = { ...newProd, id };
-    setProducts((prev) => [product, ...prev]);
-    toast.success(`Product "${product.productName}" added to catalog.`);
+  // Add Product to Backend
+  const addProduct = async (newProd: Omit<Product, "id">) => {
+    try {
+      const res = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProd),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to add product to backend");
+        return;
+      }
+
+      setProducts((prev) => [data.product, ...prev]);
+      toast.success(`Product "${data.product.productName}" saved to database.`);
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
-  // Update Product
   const updateProduct = (id: string, updates: Partial<Product>) => {
     setProducts((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
@@ -537,10 +545,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast.success("Product details updated.");
   };
 
-  // Update Store Settings
-  const updateSettings = (newSettings: Partial<StoreSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-    toast.success("Store payment and delivery settings saved.");
+  // Update Store Settings on Backend
+  const updateSettings = async (newSettings: Partial<StoreSettings>) => {
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newSettings),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to save settings");
+        return;
+      }
+
+      setSettings(data.settings);
+      toast.success("Store payment and delivery settings saved to database.");
+    } catch {
+      toast.error("Failed to connect to backend");
+    }
   };
 
   // Role Switching Helpers
@@ -578,6 +602,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         settings,
         currentUser,
         inventoryMovements,
+        isLoadingBackend,
         addToCart,
         removeFromCart,
         updateCartQuantity,
@@ -597,6 +622,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         loginAsCustomer,
         loginAsOwner,
         logout,
+        refreshBackendData,
       }}
     >
       {children}

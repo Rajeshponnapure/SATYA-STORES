@@ -43,13 +43,13 @@ export default function OrderDetailsPage() {
     );
   }
 
-  const handleReSubmit = (e: React.FormEvent) => {
+  const handleReSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reSubmitUtr || reSubmitUtr.trim().length < 6) {
       toast.error("Please enter a valid 12-digit UTR reference.");
       return;
     }
-    submitPaymentDetails(order.id, reSubmitUtr);
+    await submitPaymentDetails(order.id, reSubmitUtr);
     setIsResubmitting(false);
   };
 
@@ -347,3 +347,4 @@ export default function OrderDetailsPage() {
     </div>
   );
 }
+
