@@ -269,20 +269,6 @@ export default function AdminDashboardPage() {
               )}
             </button>
           </form>
-
-          {/* Helper demo badge for owner */}
-          <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setAdminEmail("admin@sathyastores.com");
-                setAdminPassword("admin123");
-              }}
-              className="text-[11px] font-semibold text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 py-1 px-3 rounded-lg transition-colors"
-            >
-              Fill Default Credentials (admin@sathyastores.com / admin123)
-            </button>
-          </div>
         </div>
       </div>
     );

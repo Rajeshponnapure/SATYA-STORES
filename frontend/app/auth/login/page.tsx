@@ -35,11 +35,6 @@ export default function LoginPage() {
     }
   };
 
-  const fillDemoCustomer = () => {
-    setEmailOrPhone("rajesh.varma@gmail.com");
-    setPassword("customer123");
-  };
-
   return (
     <div className="min-h-[80vh] flex items-center justify-center px-4 py-8 sm:py-12">
       <div className="w-full max-w-md bg-white/90 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xl shadow-slate-200/50">
@@ -122,20 +117,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Quick Demo Customer Button */}
-        <div className="mt-5 pt-4 border-t border-slate-100 text-center">
-          <p className="text-[11px] text-slate-400 mb-2">Want to test with a pre-configured account?</p>
-          <button
-            type="button"
-            onClick={fillDemoCustomer}
-            className="inline-flex items-center space-x-1.5 py-1.5 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5 text-blue-600" />
-            <span>Fill Demo Customer (Rajesh Varma)</span>
-          </button>
-        </div>
-
-        <div className="mt-5 text-center text-xs text-slate-600">
+        <div className="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-600">
           Don&apos;t have an account yet?{" "}
           <Link href="/auth/signup" className="font-bold text-blue-600 hover:underline">
             Create an Account

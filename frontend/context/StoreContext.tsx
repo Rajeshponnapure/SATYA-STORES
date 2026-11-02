@@ -195,17 +195,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (prodRes.status === "fulfilled" && prodRes.value.ok) {
         const data = await prodRes.value.json();
-        if (data.products && data.products.length > 0) setProducts(data.products);
+        setProducts(data.products || []);
       }
 
       if (catRes.status === "fulfilled" && catRes.value.ok) {
         const data = await catRes.value.json();
-        if (data.categories && data.categories.length > 0) setCategories(data.categories);
+        setCategories(data.categories || []);
       }
 
       if (ordRes.status === "fulfilled" && ordRes.value.ok) {
         const data = await ordRes.value.json();
-        if (data.orders) setOrders(data.orders);
+        setOrders(data.orders || []);
       }
 
       if (setRes.status === "fulfilled" && setRes.value.ok) {
@@ -215,12 +215,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       if (marqRes.status === "fulfilled" && marqRes.value.ok) {
         const data = await marqRes.value.json();
-        if (data.marquees && data.marquees.length > 0) setMarquees(data.marquees);
+        setMarquees(data.marquees || []);
       }
 
       if (layRes.status === "fulfilled" && layRes.value.ok) {
         const data = await layRes.value.json();
-        if (data.sections && data.sections.length > 0) setHomepageSections(data.sections);
+        setHomepageSections(data.sections || []);
       }
     } catch (err) {
       console.warn("Backend sync failed; local data used:", err);
