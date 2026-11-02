@@ -119,11 +119,11 @@ export default function CheckoutPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       {/* Checkout Progress Stepper */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm">
-        <div className="flex items-center justify-between max-w-xl mx-auto">
-          <div className="flex items-center gap-2">
+      <div className="glass-panel rounded-2xl p-3 sm:p-5 border border-slate-200/80 shadow-sm">
+        <div className="flex items-center justify-between max-w-xl mx-auto px-1">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span
-              className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
+              className={`h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold ${
                 step === "address"
                   ? "bg-blue-600 text-white"
                   : "bg-emerald-600 text-white"
@@ -131,15 +131,15 @@ export default function CheckoutPage() {
             >
               1
             </span>
-            <span className="text-xs font-bold text-slate-900 hidden sm:inline">
-              Delivery Address
+            <span className="text-[11px] sm:text-xs font-bold text-slate-900">
+              Address
             </span>
           </div>
-          <div className="h-0.5 w-12 bg-slate-200" />
+          <div className="h-0.5 flex-1 mx-2 bg-slate-200" />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span
-              className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
+              className={`h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold ${
                 step === "payment"
                   ? "bg-blue-600 text-white"
                   : step === "utr"
@@ -149,15 +149,15 @@ export default function CheckoutPage() {
             >
               2
             </span>
-            <span className="text-xs font-bold text-slate-900 hidden sm:inline">
-              Transfer Funds
+            <span className="text-[11px] sm:text-xs font-bold text-slate-900">
+              Transfer
             </span>
           </div>
-          <div className="h-0.5 w-12 bg-slate-200" />
+          <div className="h-0.5 flex-1 mx-2 bg-slate-200" />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <span
-              className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${
+              className={`h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold ${
                 step === "utr"
                   ? "bg-blue-600 text-white"
                   : "bg-slate-200 text-slate-600"
@@ -165,8 +165,8 @@ export default function CheckoutPage() {
             >
               3
             </span>
-            <span className="text-xs font-bold text-slate-900 hidden sm:inline">
-              Submit UTR Proof
+            <span className="text-[11px] sm:text-xs font-bold text-slate-900">
+              UTR
             </span>
           </div>
         </div>

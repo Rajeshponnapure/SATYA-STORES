@@ -314,6 +314,34 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Sticky Bottom Floating Action Bar */}
+      <div className="lg:hidden fixed bottom-14 left-0 right-0 z-30 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] flex items-center justify-between gap-3">
+        <div>
+          <span className="text-[10px] text-slate-400 font-bold block uppercase">Total</span>
+          <span className="text-base font-black text-slate-900 leading-none">
+            {formatINR(activePrice * quantity)}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-1 justify-end max-w-xs">
+          <button
+            type="button"
+            onClick={handleAddToCart}
+            disabled={isOutOfStock}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-white border border-blue-600 text-blue-600 text-xs font-bold flex items-center justify-center gap-1 active:scale-95 disabled:opacity-40"
+          >
+            <ShoppingCart className="h-3.5 w-3.5" /> Add
+          </button>
+          <button
+            type="button"
+            onClick={handleBuyNow}
+            disabled={isOutOfStock}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-orange-500/20 active:scale-95 disabled:opacity-40"
+          >
+            <Zap className="h-3.5 w-3.5 fill-white" /> Buy Now
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

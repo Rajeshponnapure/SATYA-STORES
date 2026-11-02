@@ -156,39 +156,39 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Top Banner with Store Owner Info */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-8 border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700">
-              <ShieldCheck className="h-5 w-5" />
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="p-1 sm:p-1.5 rounded-lg bg-amber-500/20 text-amber-700">
+              <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
             </span>
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-700">
-              Single-Owner Administration Portal
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-amber-700">
+              Store Owner Administration Portal
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
+          <h1 className="text-xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
             Satya Stores Command Center
           </h1>
-          <p className="text-xs text-slate-500">
-            Managed entity: <strong>Vasavi Enterprises</strong> • Autonomous store operations
+          <p className="text-[11px] sm:text-xs text-slate-500">
+            Entity: <strong>Vasavi Enterprises</strong> • Autonomous operations
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end pt-1 sm:pt-0">
           <Link
             href="/"
-            className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-blue-600 font-bold text-xs shadow-sm transition-colors"
+            className="px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-blue-600 font-bold text-xs shadow-sm transition-colors"
           >
-            ← View Customer Storefront
+            ← Storefront
           </Link>
-          <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Live Store Active
+          <span className="px-2.5 sm:px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Live Active
           </span>
         </div>
       </div>
 
       {/* Primary Navigation Tabs */}
-      <div className="flex items-center bg-slate-200/70 p-1.5 rounded-2xl text-xs font-bold overflow-x-auto gap-1">
+      <div className="flex items-center bg-slate-200/80 p-1 sm:p-1.5 rounded-xl sm:rounded-2xl text-xs font-bold overflow-x-auto no-scrollbar gap-1 -mx-3 px-3 sm:mx-0 sm:px-0">
         <button
           onClick={() => setActiveTab("overview")}
           className={`px-4 py-2 rounded-xl transition-all whitespace-nowrap flex items-center gap-1.5 ${
@@ -270,58 +270,58 @@ export default function AdminDashboardPage() {
       {activeTab === "overview" && (
         <div className="space-y-6">
           {/* 4 Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="glass-card rounded-2xl p-5 border border-slate-200/80 shadow-sm">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Verified Net Revenue
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+            <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 shadow-sm">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Net Revenue
               </span>
-              <div className="text-2xl font-black text-slate-900 mt-1">
+              <div className="text-lg sm:text-2xl font-black text-slate-900 mt-1">
                 {formatINR(verifiedRevenue)}
               </div>
-              <span className="text-[10px] text-emerald-600 font-bold block mt-1">
-                Based on confirmed bank settlement
+              <span className="text-[9px] sm:text-[10px] text-emerald-600 font-bold block mt-0.5 truncate">
+                Confirmed Bank
               </span>
             </div>
 
-            <div className="glass-card rounded-2xl p-5 border border-slate-200/80 shadow-sm">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Awaiting Verification
+            <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 shadow-sm">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Verification Queue
               </span>
-              <div className="text-2xl font-black text-blue-600 mt-1">
+              <div className="text-lg sm:text-2xl font-black text-blue-600 mt-1">
                 {pendingPayments.length} Payments
               </div>
               <button
                 onClick={() => setActiveTab("payments")}
-                className="text-[10px] text-blue-600 font-bold hover:underline block mt-1"
+                className="text-[9px] sm:text-[10px] text-blue-600 font-bold hover:underline block mt-0.5 truncate"
               >
-                Go to Verification Queue →
+                Inspect Queue →
               </button>
             </div>
 
-            <div className="glass-card rounded-2xl p-5 border border-slate-200/80 shadow-sm">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Total Orders Received
+            <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 shadow-sm">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Total Orders
               </span>
-              <div className="text-2xl font-black text-slate-900 mt-1">
+              <div className="text-lg sm:text-2xl font-black text-slate-900 mt-1">
                 {orders.length}
               </div>
-              <span className="text-[10px] text-slate-500 font-medium block mt-1">
-                {verifiedOrders.length} confirmed / {orders.length - verifiedOrders.length} processing
+              <span className="text-[9px] sm:text-[10px] text-slate-500 font-medium block mt-0.5 truncate">
+                {verifiedOrders.length} verified
               </span>
             </div>
 
-            <div className="glass-card rounded-2xl p-5 border border-slate-200/80 shadow-sm">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Low Stock Warnings
+            <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 shadow-sm">
+              <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Low Stock Items
               </span>
-              <div className="text-2xl font-black text-amber-600 mt-1">
-                {lowStockProducts.length} Items
+              <div className="text-lg sm:text-2xl font-black text-amber-600 mt-1">
+                {lowStockProducts.length}
               </div>
               <button
                 onClick={() => setActiveTab("inventory")}
-                className="text-[10px] text-amber-700 font-bold hover:underline block mt-1"
+                className="text-[9px] sm:text-[10px] text-amber-700 font-bold hover:underline block mt-0.5 truncate"
               >
-                Inspect Stock Levels →
+                View Stock →
               </button>
             </div>
           </div>

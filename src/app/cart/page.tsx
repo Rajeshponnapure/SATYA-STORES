@@ -93,10 +93,10 @@ export default function CartPage() {
             return (
               <div
                 key={`${item.productId}-${item.variantSku || "base"}`}
-                className="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+                className="glass-card rounded-2xl p-3 sm:p-5 border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4"
               >
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="h-20 w-20 rounded-xl bg-slate-50 border border-slate-100 p-2 flex items-center justify-center shrink-0">
+                <div className="flex items-center gap-3 sm:gap-4 flex-1">
+                  <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl bg-slate-50 border border-slate-100 p-1.5 flex items-center justify-center shrink-0">
                     <img
                       src={item.product.images[0]}
                       alt={item.product.productName}
@@ -104,18 +104,18 @@ export default function CartPage() {
                     />
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-0.5 sm:space-y-1 min-w-0">
                     <span className="text-[10px] uppercase font-bold text-blue-600 tracking-wider">
                       {item.product.brand}
                     </span>
                     <Link
                       href={`/product/${item.product.slug}`}
-                      className="font-bold text-sm text-slate-900 hover:text-blue-600 transition-colors line-clamp-1"
+                      className="font-bold text-xs sm:text-sm text-slate-900 hover:text-blue-600 transition-colors line-clamp-1 block"
                     >
                       {item.product.productName}
                     </Link>
                     {variant && (
-                      <span className="inline-block text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                      <span className="inline-block text-[10px] sm:text-[11px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                         {variant.name}
                       </span>
                     )}
@@ -126,7 +126,7 @@ export default function CartPage() {
                 </div>
 
                 {/* Quantity Controls & Price */}
-                <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                   <div className="flex items-center border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
                     <button
                       type="button"
