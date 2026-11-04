@@ -17,11 +17,12 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  if (currentUser) {
-    if (typeof window !== "undefined") {
+  // Safely redirect in useEffect once authenticated
+  React.useEffect(() => {
+    if (currentUser) {
       router.push("/account");
     }
-  }
+  }, [currentUser, router]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();

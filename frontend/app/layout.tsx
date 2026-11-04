@@ -28,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body className="font-sans antialiased bg-[#F4F6F9] text-slate-800 min-h-screen flex flex-col">
         <StoreProvider>
           <AnimatedGridBackground>

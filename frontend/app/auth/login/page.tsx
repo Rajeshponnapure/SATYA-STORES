@@ -15,12 +15,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // If already logged in, redirect to account
-  if (currentUser) {
-    if (typeof window !== "undefined") {
+  // Safely redirect in useEffect once authenticated
+  React.useEffect(() => {
+    if (currentUser) {
       router.push("/account");
     }
-  }
+  }, [currentUser, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
