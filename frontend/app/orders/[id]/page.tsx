@@ -24,7 +24,7 @@ import { toast } from "sonner";
 export default function OrderDetailsPage() {
   const params = useParams();
   const orderId = params?.id as string;
-  const { orders, submitPaymentDetails, settings } = useStore();
+  const { orders, submitPaymentDetails, settings, isLoadingBackend } = useStore();
 
   const order = orders.find((o) => o.id === orderId);
 
@@ -33,6 +33,9 @@ export default function OrderDetailsPage() {
   const [isResubmitting, setIsResubmitting] = useState(false);
 
   if (!order) {
+    if (isLoadingBackend) {
+      return <div role="status" aria-live="polite" className="py-20 text-center text-sm font-medium text-slate-500">Loading order…</div>;
+    }
     return (
       <div className="py-20 text-center">
         <h2 className="text-xl font-bold text-slate-800">Order not found</h2>

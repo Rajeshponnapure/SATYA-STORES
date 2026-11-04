@@ -8,19 +8,19 @@ export function Footer() {
       {/* 1. Concise Trust Badges Row */}
       <div className="border-b border-slate-100 py-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 text-xs">
-          <div className="flex items-center space-x-2 text-slate-700">
+          <div className="flex min-w-0 items-center gap-2 text-slate-700">
             <ShieldCheck className="h-4 w-4 text-blue-600 shrink-0" />
             <span className="font-semibold">100% Brand Genuine</span>
           </div>
-          <div className="flex items-center space-x-2 text-slate-700">
+          <div className="flex min-w-0 items-center gap-2 text-slate-700">
             <CreditCard className="h-4 w-4 text-emerald-600 shrink-0" />
             <span className="font-semibold">Direct UPI / Bank Transfer</span>
           </div>
-          <div className="flex items-center space-x-2 text-slate-700">
+          <div className="flex min-w-0 items-center gap-2 text-slate-700">
             <Truck className="h-4 w-4 text-amber-600 shrink-0" />
             <span className="font-semibold">Fast Insured Delivery</span>
           </div>
-          <div className="flex items-center space-x-2 text-slate-700">
+          <div className="flex min-w-0 items-center gap-2 text-slate-700">
             <Phone className="h-4 w-4 text-indigo-600 shrink-0" />
             <span className="font-semibold">+91 98490 12345 (Support)</span>
           </div>

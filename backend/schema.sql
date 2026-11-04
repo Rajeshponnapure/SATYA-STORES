@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS admin_profile (
   role TEXT NOT NULL DEFAULT 'owner',
   two_factor_enabled BOOLEAN DEFAULT true,
   two_factor_method TEXT DEFAULT 'OTP_SMS_EMAIL',
-  two_factor_pin TEXT DEFAULT '739201',
+  two_factor_pin TEXT DEFAULT '',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -239,7 +239,7 @@ INSERT INTO store_settings (id, store_name, business_entity, support_phone, supp
 
 -- 3. Admin Profile
 INSERT INTO admin_profile (id, full_name, email, mobile_number, business_entity, role, two_factor_enabled, two_factor_method, two_factor_pin) VALUES (
-  'admin-master', 'Satya Narayana', 'admin@sathyastores.com', '+91 98480 22338', 'Vasavi Enterprises', 'owner', true, 'OTP_SMS_EMAIL', '739201'
+  'admin-master', 'Satya Narayana', 'admin@sathyastores.com', '+91 98480 22338', 'Vasavi Enterprises', 'owner', true, 'OTP_SMS_EMAIL', ''
 ) ON CONFLICT (id) DO NOTHING;
 
 -- 4. Products

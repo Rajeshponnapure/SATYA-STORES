@@ -326,17 +326,14 @@ export const userService = {
       return { success: false, error: "Current admin password is incorrect." };
     }
 
-    // 2. Verify 2FA code (checks active 2FA OTP or static 6-digit Master Security PIN)
-    const staticPin = db.adminProfile?.twoFactorPin || "739201";
+    // 2. Verify a short-lived OTP. Static fallback PINs are not secure.
     const cleanCode = twoFactorCode.trim();
 
     const isOtpValid = activeAdmin2faOtp &&
       activeAdmin2faOtp.otp === cleanCode &&
       Date.now() <= activeAdmin2faOtp.expiresAt;
 
-    const isPinValid = cleanCode === staticPin;
-
-    if (!isOtpValid && !isPinValid) {
+    if (!isOtpValid) {
       return {
         success: false,
         error: "Invalid or expired Two-Factor Authentication (2FA) code.",

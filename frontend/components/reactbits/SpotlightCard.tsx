@@ -3,7 +3,10 @@
 import React, { useRef, useState } from "react";
 import { motion, useMotionTemplate, useMotionValue, useSpring } from "framer-motion";
 
-interface SpotlightCardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface SpotlightCardProps extends Omit<
+  React.ComponentProps<typeof motion.div>,
+  "children" | "className" | "style" | "whileHover" | "onMouseMove" | "onMouseEnter" | "onMouseLeave"
+> {
   children: React.ReactNode;
   className?: string;
   spotlightColor?: string;
@@ -79,7 +82,7 @@ export function SpotlightCard({
       className={`relative rounded-3xl p-[1px] transition-shadow duration-300 ${
         isHovered ? "shadow-xl shadow-blue-500/10" : "shadow-sm shadow-slate-200/50"
       } ${className}`}
-      {...(props as any)}
+      {...props}
     >
       {/* Dynamic Animated Border Layer */}
       <motion.div

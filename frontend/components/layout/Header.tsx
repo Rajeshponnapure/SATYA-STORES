@@ -127,7 +127,7 @@ export function Header() {
                   href={topMarquee.link || "/category/mobiles"}
                   className="hover:opacity-90 inline-flex items-center space-x-2"
                 >
-                  <span className="inline-flex items-center px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] uppercase tracking-wider">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[9px] uppercase tracking-wider">
                     SPECIAL OFFER
                   </span>
                   <span className="font-semibold tracking-wide">{topMarquee.text}</span>
@@ -154,9 +154,9 @@ export function Header() {
       {/* 2. Main Executive Header Bar */}
       <div className="bg-[#F4F6F9]/95 sm:bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all">
         <div className="max-w-7xl mx-auto px-3 sm:px-6">
-          <div className="flex items-center justify-between h-15 sm:h-17 gap-2 sm:gap-4">
+          <div className="flex items-center justify-between min-h-14 sm:min-h-16 gap-1.5 sm:gap-4">
             {/* Left: Mobile Hamburger & Brand Identity */}
-            <div className="flex items-center space-x-2.5 sm:space-x-3 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-3 shrink-0 min-w-0">
               <button
                 onClick={() => setIsMobileDrawerOpen(true)}
                 className="lg:hidden p-2 rounded-xl text-slate-700 hover:text-slate-900 hover:bg-slate-200/60 active:scale-95 transition-all"
@@ -165,20 +165,20 @@ export function Header() {
                 <Menu className="h-5 w-5" />
               </button>
 
-              <Link href="/" className="flex items-center space-x-2.5 group">
+              <Link href="/" className="flex items-center gap-2 sm:gap-2.5 group min-w-0">
                 <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-2xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-sky-500 flex items-center justify-center text-white shadow-md shadow-blue-600/25 group-hover:scale-105 transition-transform duration-300">
-                  <Store className="h-5 w-5 sm:h-5.5 sm:w-5.5" />
+                  <Store className="h-5 w-5" />
                 </div>
                 <div className="flex flex-col">
-                  <div className="flex items-baseline space-x-1">
-                    <span className="text-base sm:text-xl font-black tracking-tight text-slate-900 leading-none">
+                  <div className="flex items-baseline gap-1 whitespace-nowrap">
+                    <span className="text-sm min-[390px]:text-base sm:text-xl font-black tracking-tight text-slate-900 leading-none">
                       SATYA
                     </span>
-                    <span className="text-base sm:text-xl font-black tracking-tight text-blue-600 leading-none">
+                    <span className="text-sm min-[390px]:text-base sm:text-xl font-black tracking-tight text-blue-600 leading-none">
                       STORES
                     </span>
                   </div>
-                  <span className="text-[8.5px] uppercase font-bold tracking-widest text-slate-400 leading-tight mt-0.5">
+                  <span className="text-[8px] sm:text-[8.5px] uppercase font-bold tracking-wider sm:tracking-widest text-slate-400 leading-tight mt-0.5">
                     Vasavi Enterprises
                   </span>
                 </div>
@@ -282,7 +282,7 @@ export function Header() {
               {/* Wishlist Button with Counter */}
               <Link
                 href="/favorites"
-                className="p-2 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50/80 active:scale-95 transition-all relative"
+                className="hidden sm:flex p-2 rounded-xl text-slate-600 hover:text-rose-600 hover:bg-rose-50/80 active:scale-95 transition-all relative"
                 aria-label="Wishlist"
               >
                 <Heart
@@ -291,7 +291,7 @@ export function Header() {
                   }`}
                 />
                 {favorites.length > 0 && (
-                  <span className="absolute 1 top-1 right-1 h-4 w-4 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-sm">
+                <span className="absolute top-1 right-1 h-4 min-w-4 px-0.5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-sm">
                     {favorites.length}
                   </span>
                 )}
@@ -300,7 +300,7 @@ export function Header() {
               {/* Cart Button */}
               <Link
                 href="/cart"
-                className="flex items-center space-x-2 py-2 px-3 rounded-2xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm active:scale-95 transition-all shadow-md shadow-slate-900/15"
+                className="hidden sm:flex items-center space-x-2 py-2 px-3 rounded-2xl bg-slate-900 hover:bg-black text-white font-bold text-xs sm:text-sm active:scale-95 transition-all shadow-md shadow-slate-900/15"
               >
                 <div className="relative">
                   <ShoppingCart className="h-4.5 w-4.5 text-amber-400" />
@@ -315,7 +315,7 @@ export function Header() {
 
               {/* Customer Account / Sign In */}
               {currentUser ? (
-                <div className="relative">
+                <div className="relative hidden sm:block">
                   <button
                     onClick={() => setIsAccountMenuOpen(!isAccountMenuOpen)}
                     className="flex items-center space-x-1.5 py-1.5 px-2.5 sm:px-3 rounded-2xl border border-slate-200/90 bg-white hover:border-blue-400 transition-all text-xs font-bold text-slate-800 shadow-sm"
@@ -382,7 +382,7 @@ export function Header() {
                   )}
                 </div>
               ) : (
-                <div className="flex items-center space-x-1">
+                <div className="hidden sm:flex items-center space-x-1">
                   <Link
                     href="/auth/login"
                     className="py-1.5 px-3 rounded-xl text-xs font-bold text-slate-700 hover:text-blue-600 hover:bg-slate-200/50 transition-colors"

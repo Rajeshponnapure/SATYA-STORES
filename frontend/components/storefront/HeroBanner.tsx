@@ -39,12 +39,12 @@ export function HeroBanner() {
 
         {/* Hero Content Overlay */}
         <div className="absolute inset-0 flex flex-col justify-center px-4 sm:px-10 md:px-16 max-w-2xl text-white">
-          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-black tracking-wide uppercase w-fit mb-2 shadow-sm backdrop-blur-sm animate-pulse-subtle">
+          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] sm:text-xs font-black tracking-wide uppercase w-fit max-w-full mb-2 shadow-sm backdrop-blur-sm animate-pulse-subtle">
             <Sparkles className="h-3 w-3" />
             {current.tag}
           </div>
 
-          <h2 className="text-xl sm:text-3xl md:text-5xl font-black tracking-tight leading-tight text-white mb-1.5 sm:mb-2 drop-shadow-sm">
+          <h2 className="text-xl sm:text-3xl md:text-5xl font-black tracking-tight leading-tight text-white mb-1.5 sm:mb-2 drop-shadow-sm line-clamp-3 break-words">
             {current.title}
           </h2>
 
@@ -52,7 +52,7 @@ export function HeroBanner() {
             {current.subtitle}
           </p>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Link
               href={current.destinationUrl}
               className="inline-flex items-center gap-1.5 px-4 sm:px-6 py-2 sm:py-3 rounded-xl sm:rounded-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 group/btn"
@@ -77,14 +77,14 @@ export function HeroBanner() {
               onClick={() =>
                 setCurrentIndex((prev) => (prev - 1 + activeBanners.length) % activeBanners.length)
               }
-              className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm transition-all"
+              className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 min-h-10 min-w-10 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm transition-all"
               aria-label="Previous slide"
             >
               <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
             <button
               onClick={() => setCurrentIndex((prev) => (prev + 1) % activeBanners.length)}
-              className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-1.5 sm:p-2 rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm transition-all"
+              className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 min-h-10 min-w-10 flex items-center justify-center rounded-full bg-black/40 hover:bg-black/60 text-white backdrop-blur-sm transition-all"
               aria-label="Next slide"
             >
               <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />

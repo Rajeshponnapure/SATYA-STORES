@@ -4,10 +4,11 @@ import React from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronRight, ShieldCheck, Truck, RefreshCw, FileText } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 const pageContent: Record<
   string,
-  { title: string; subtitle: string; icon: any; content: string[] }
+  { title: string; subtitle: string; icon: LucideIcon; content: string[] }
 > = {
   "about-us": {
     title: "About Satya Stores & Vasavi Enterprises",

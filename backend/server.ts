@@ -11,6 +11,8 @@ import { deliveryService } from "./services/deliveryService";
 import { userService } from "./services/userService";
 import { cmsService } from "./services/cmsService";
 import { getDatabase, saveDatabase } from "./db/database";
+import { initialPromotions } from "./db/initialData";
+import { clearAdminSession, requireAdminSession, setAdminSession } from "./utils/adminSession";
 
 dotenv.config();
 
@@ -86,11 +88,31 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
     if (!result.success || !result.isAdmin) {
       return res.status(403).json({ success: false, error: "Invalid administrative credentials." });
     }
+    if (!setAdminSession(res)) {
+      return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
+    }
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// Owner-only API routes require an expiring, HttpOnly signed session cookie.
+app.use("/api/admin", requireAdminSession);
+app.post("/api/admin/logout", (_req: Request, res: Response) => {
+  clearAdminSession(res);
+  res.json({ success: true });
+});
+
+// Catalog mutations and media uploads are also owner-only.
+const requireAdminForMutation = (req: Request, res: Response, next: import("express").NextFunction) => {
+  if (req.method === "GET" || req.method === "HEAD") return next();
+  return requireAdminSession(req, res, next);
+};
+app.use("/api/products", requireAdminForMutation);
+app.use("/api/categories", requireAdminForMutation);
+app.use("/api/upload", requireAdminForMutation);
+app.use("/api/settings", requireAdminForMutation);
 
 // Forgot Password Request (Generates OTP)
 app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
@@ -333,6 +355,16 @@ app.get("/api/categories", async (_req: Request, res: Response) => {
   try {
     const categories = await productService.getAllCategories();
     res.json({ success: true, categories });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/promotions", async (_req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const promotions = db.promotions?.length ? db.promotions : initialPromotions;
+    res.json({ success: true, promotions });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

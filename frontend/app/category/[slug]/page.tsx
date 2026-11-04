@@ -10,7 +10,7 @@ import { ChevronRight, ArrowLeft, SlidersHorizontal } from "lucide-react";
 export default function CategoryPage() {
   const params = useParams();
   const slug = params?.slug as string;
-  const { categories, products } = useStore();
+  const { categories, products, isLoadingBackend } = useStore();
 
   const [sortBy, setSortBy] = useState<string>("featured");
   const [inStockOnly, setInStockOnly] = useState<boolean>(false);
@@ -38,6 +38,9 @@ export default function CategoryPage() {
   }, [currentCategory, products, inStockOnly, sortBy]);
 
   if (!currentCategory) {
+    if (isLoadingBackend) {
+      return <div role="status" aria-live="polite" className="py-20 text-center text-sm font-medium text-slate-500">Loading category…</div>;
+    }
     return (
       <div className="py-16 text-center">
         <h2 className="text-xl font-bold text-slate-800">Category not found</h2>

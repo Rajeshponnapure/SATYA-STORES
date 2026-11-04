@@ -70,7 +70,7 @@ export function ProductCard({ product }: { product: Product }) {
                   e.stopPropagation();
                   toggleFavorite(product.id);
                 }}
-                className={`p-1.5 sm:p-2 rounded-xl backdrop-blur-md shadow-sm transition-all ${
+                className={`min-h-10 min-w-10 sm:min-h-11 sm:min-w-11 p-2 rounded-xl backdrop-blur-md shadow-sm transition-all ${
                   isFavorite
                     ? "bg-rose-50 text-rose-500 border border-rose-200"
                     : "bg-white/90 text-slate-400 hover:text-rose-500 hover:bg-white border border-slate-200/60"
@@ -103,7 +103,7 @@ export function ProductCard({ product }: { product: Product }) {
               <span className="font-extrabold text-blue-600 uppercase tracking-wider truncate max-w-[90px] sm:max-w-[120px]">
                 {product.brand}
               </span>
-              <div className="flex items-center text-amber-500 font-bold gap-0.5 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-100">
+              <div className="flex items-center text-amber-500 font-bold gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                 <span className="text-slate-800 text-[10px]">{product.rating || 4.8}</span>
               </div>

@@ -492,7 +492,7 @@ export default function AdminDashboardPage() {
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id as typeof activeTab)}
               className={`flex items-center space-x-1.5 py-2 px-3.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                 isActive
                   ? "bg-slate-900 text-white shadow-sm"
@@ -775,10 +775,10 @@ export default function AdminDashboardPage() {
               <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
                 <div className="flex items-center justify-between font-bold text-slate-800">
                   <span>2FA Protection Mode</span>
-                  <span className="font-mono text-blue-600">6-Digit OTP / Master PIN</span>
+                  <span className="font-mono text-blue-600">6-Digit OTP</span>
                 </div>
                 <p className="text-slate-500 text-[11px]">
-                  Whenever changing the admin master password, you must verify with a 6-digit Security Code or Master PIN (<code className="font-mono font-bold text-slate-700 bg-slate-200 px-1 py-0.5 rounded">739201</code>).
+                  Whenever changing the admin password, verify with a fresh 6-digit code generated for this session.
                 </p>
               </div>
 
@@ -922,7 +922,7 @@ export default function AdminDashboardPage() {
                     type="text"
                     required
                     maxLength={6}
-                    placeholder="Enter 6-digit 2FA code (or 739201)"
+                    placeholder="Enter 6-digit 2FA code"
                     value={admin2faCode}
                     onChange={(e) => setAdmin2faCode(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-widest text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -1795,7 +1795,7 @@ export default function AdminDashboardPage() {
                   <label className="font-semibold text-slate-700 block mb-1">Position</label>
                   <select
                     value={newMarqPos}
-                    onChange={(e) => setNewMarqPos(e.target.value as any)}
+                    onChange={(e) => setNewMarqPos(e.target.value as "header" | "hero_top" | "footer")}
                     className="w-full p-2.5 rounded-xl border border-slate-200 bg-white"
                   >
                     <option value="header">Top Header</option>
@@ -1877,7 +1877,7 @@ export default function AdminDashboardPage() {
                 <label className="font-semibold text-slate-700 block mb-1">Delivery Status</label>
                 <select
                   value={newDeliveryStatus}
-                  onChange={(e) => setNewDeliveryStatus(e.target.value as any)}
+                  onChange={(e) => setNewDeliveryStatus(e.target.value as DeliveryStatus)}
                   className="w-full p-2.5 rounded-xl border border-slate-200 bg-white"
                 >
                   <option value="Preparing for Dispatch">Preparing for Dispatch</option>

@@ -83,7 +83,7 @@ interface StoreContextType {
 
   // Admin Auth & Management
   adminLogin: (password: string, usernameOrEmail?: string) => Promise<{ success: boolean; error?: string }>;
-  adminLogout: () => void;
+  adminLogout: () => Promise<void>;
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
   adminUpdateUserPassword: (userId: string, newPass: string) => Promise<boolean>;
@@ -149,7 +149,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const storedAdmin = localStorage.getItem("satya_admin_auth");
       if (storedAdmin === "true") {
-        setIsAdminAuthenticated(true);
+        fetch("/api/admin/profile")
+          .then((res) => {
+            if (res.ok) setIsAdminAuthenticated(true);
+            else localStorage.removeItem("satya_admin_auth");
+          })
+          .catch(() => localStorage.removeItem("satya_admin_auth"));
       }
 
       const storedCart = localStorage.getItem("satya_cart");
@@ -184,13 +189,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const refreshBackendData = useCallback(async () => {
     try {
       setIsLoadingBackend(true);
-      const [prodRes, catRes, ordRes, setRes, marqRes, layRes] = await Promise.allSettled([
+      const [prodRes, catRes, ordRes, setRes, marqRes, layRes, promoRes] = await Promise.allSettled([
         fetch("/api/products"),
         fetch("/api/categories"),
         fetch("/api/orders"),
         fetch("/api/settings"),
         fetch("/api/marquees"),
         fetch("/api/layout"),
+        fetch("/api/promotions"),
       ]);
 
       if (prodRes.status === "fulfilled" && prodRes.value.ok) {
@@ -221,6 +227,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (layRes.status === "fulfilled" && layRes.value.ok) {
         const data = await layRes.value.json();
         setHomepageSections(data.sections || []);
+      }
+
+      if (promoRes.status === "fulfilled" && promoRes.value.ok) {
+        const data = await promoRes.value.json();
+        setPromotions(data.promotions || []);
       }
     } catch (err) {
       console.warn("Backend sync failed; local data used:", err);
@@ -705,21 +716,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toast.success("Welcome, Store Administrator!");
       return { success: true };
     } catch {
-      // Local check fallback
-      if (password === "admin123" || password === "admin") {
-        setIsAdminAuthenticated(true);
-        localStorage.setItem("satya_admin_auth", "true");
-        toast.success("Admin authorized (Local mode)");
-        return { success: true };
-      }
-      return { success: false, error: "Incorrect password" };
+      return { success: false, error: "Could not reach the sign-in service. Please try again." };
     }
   };
 
-  const adminLogout = () => {
+  const adminLogout = async () => {
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } finally {
     setIsAdminAuthenticated(false);
     localStorage.removeItem("satya_admin_auth");
     toast.info("Logged out of Admin Portal");
+    }
   };
 
   const fetchAdminUsers = async (search?: string) => {

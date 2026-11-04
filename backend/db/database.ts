@@ -43,7 +43,7 @@ export const initialAdminProfile: AdminProfile = {
   role: "owner",
   twoFactorEnabled: true,
   twoFactorMethod: "OTP_SMS_EMAIL",
-  twoFactorPin: "739201",
+  twoFactorPin: "",
   updatedAt: new Date().toISOString(),
 };
 
@@ -157,7 +157,7 @@ function mapSupabaseAdmin(a: any): AdminProfile {
     role: a.role || "owner",
     twoFactorEnabled: Boolean(a.two_factor_enabled ?? a.twoFactorEnabled ?? true),
     twoFactorMethod: a.two_factor_method || a.twoFactorMethod || "OTP_SMS_EMAIL",
-    twoFactorPin: a.two_factor_pin || a.twoFactorPin || "739201",
+    twoFactorPin: a.two_factor_pin || a.twoFactorPin || "",
     updatedAt: a.updated_at || a.updatedAt || new Date().toISOString(),
   };
 }

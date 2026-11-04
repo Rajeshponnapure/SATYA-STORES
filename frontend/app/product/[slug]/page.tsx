@@ -30,6 +30,7 @@ export default function ProductDetailPage() {
   const slug = params?.slug as string;
   const {
     products,
+    isLoadingBackend,
     addToCart,
     favorites,
     toggleFavorite,
@@ -60,6 +61,9 @@ export default function ProductDetailPage() {
   }, [product, fetchProductReviews]);
 
   if (!product) {
+    if (isLoadingBackend) {
+      return <div role="status" aria-live="polite" className="py-20 text-center text-sm font-medium text-slate-500">Loading product…</div>;
+    }
     return (
       <div className="py-20 text-center">
         <h2 className="text-xl font-bold text-slate-800">Product not found</h2>
@@ -488,7 +492,7 @@ export default function ProductDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-slate-900 text-xs">{rev.userName}</span>
-                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded-full border border-emerald-100">
+                    <span className="text-[10px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">
                       Verified Buyer
                     </span>
                   </div>
