@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
 import cors from "cors";
-import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { productService } from "./services/productService";
@@ -27,8 +26,6 @@ import {
   setAdminSession,
   setCustomerSession,
 } from "./utils/session";
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
