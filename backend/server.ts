@@ -13,6 +13,7 @@ import { userService } from "./services/userService";
 import { cmsService } from "./services/cmsService";
 import { getDatabase, saveDatabase } from "./db/database";
 import { initialPromotions } from "./db/initialData";
+import { isSupabaseConfigured } from "./db/supabase";
 // Optional Vercel Blob storage for production media uploads
 let putBlob: any = null;
 try {
@@ -95,6 +96,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
     status: "ok",
     service: "Satya Stores Backend API",
+    dbMode: isSupabaseConfigured ? "supabase" : "local-file",
   });
 });
 

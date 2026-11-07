@@ -65,6 +65,10 @@ const dbFilePath = path.join(dataDir, "database.json");
 // In-memory schema state to guarantee persistent reads across requests
 let memoryDb: DatabaseSchema | null = null;
 
+// Once the Supabase cloud state is loaded, memory stays authoritative for this process;
+// wholesale re-reads would wipe any in-session mutation the cloud does not have yet.
+let cloudLoaded = false;
+
 // ==========================================
 // SUPABASE SNAKE_CASE <-> CAMELCASE MAPPERS
 // ==========================================
@@ -223,6 +227,10 @@ function loadInitialFallbackDatabase(): DatabaseSchema {
 export async function getDatabase(): Promise<DatabaseSchema> {
   // 1. Prioritize Live Supabase Cloud Database Query if configured
   if (isSupabaseConfigured && supabase) {
+    // Memory is authoritative after the first successful cloud load
+    if (cloudLoaded && memoryDb) {
+      return memoryDb;
+    }
     try {
       const [
         { data: prodData, error: prodErr },
@@ -286,10 +294,11 @@ export async function getDatabase(): Promise<DatabaseSchema> {
 
       // Seed initial data into Supabase if connecting to an empty database
       if (!usersData || usersData.length === 0 || !prodData || prodData.length === 0) {
-        saveDatabase(liveSchema).catch(() => undefined);
+        await saveDatabase(liveSchema).catch(() => undefined);
       }
 
       memoryDb = liveSchema;
+      cloudLoaded = true;
       return liveSchema;
     } catch (e: any) {
       console.warn("[Database] Live Supabase query notice, falling back to local store data:", e?.message || e);
@@ -321,11 +330,13 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
     } catch {}
   }
 
-  // Sync all records directly to live Supabase Cloud Database if configured
+  // Sync all records directly to live Supabase Cloud Database if configured.
+  // Every write is verified — Supabase failures used to disappear silently,
+  // letting the app and the cloud database drift apart between requests.
   if (isSupabaseConfigured && supabase) {
     try {
       if (data.products && data.products.length > 0) {
-        await supabase.from("products").upsert(
+        const { error: syncError } = await supabase.from("products").upsert(
           data.products.map((p) => ({
             id: p.id,
             product_name: p.productName,
@@ -352,10 +363,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             is_new_arrival: p.isNewArrival,
           }))
         );
+        if (syncError) console.error("[Database] Supabase products sync failed:", syncError.message);
       }
 
       if (data.users && data.users.length > 0) {
-        await supabase.from("users").upsert(
+        const { error: syncError } = await supabase.from("users").upsert(
           data.users.map((u) => ({
             id: u.id,
             full_name: u.fullName,
@@ -373,10 +385,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             two_factor_enabled: u.twoFactorEnabled || false,
           }))
         );
+        if (syncError) console.error("[Database] Supabase users sync failed:", syncError.message);
       }
 
       if (data.categories && data.categories.length > 0) {
-        await supabase.from("categories").upsert(
+        const { error: syncError } = await supabase.from("categories").upsert(
           data.categories.map((c) => ({
             id: c.id,
             name: c.name,
@@ -387,10 +400,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             status: c.status,
           }))
         );
+        if (syncError) console.error("[Database] Supabase categories sync failed:", syncError.message);
       }
 
       if (data.orders && data.orders.length > 0) {
-        await supabase.from("orders").upsert(
+        const { error: syncError } = await supabase.from("orders").upsert(
           data.orders.map((o) => ({
             id: o.id,
             order_number: o.orderNumber,
@@ -412,10 +426,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             shipping_charge: o.shippingCharge,
           }))
         );
+        if (syncError) console.error("[Database] Supabase orders sync failed:", syncError.message);
       }
 
       if (data.settings) {
-        await supabase.from("store_settings").upsert({
+        const { error: syncError } = await supabase.from("store_settings").upsert({
           id: "primary_store_settings",
           store_name: data.settings.storeName,
           business_entity: data.settings.businessEntity,
@@ -432,10 +447,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
           standard_shipping_fee: data.settings.standardShippingFee,
           reservation_expiry_minutes: data.settings.reservationExpiryMinutes,
         });
+        if (syncError) console.error("[Database] Supabase settings sync failed:", syncError.message);
       }
 
       if (data.adminProfile) {
-        await supabase.from("admin_profile").upsert({
+        const { error: syncError } = await supabase.from("admin_profile").upsert({
           id: "admin-master",
           full_name: data.adminProfile.fullName,
           email: data.adminProfile.email,
@@ -447,10 +463,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
           two_factor_pin: data.adminProfile.twoFactorPin,
           profile_image: data.adminProfile.profileImage || null,
         });
+        if (syncError) console.error("[Database] Supabase admin profile sync failed:", syncError.message);
       }
 
       if (data.reviews && data.reviews.length > 0) {
-        await supabase.from("reviews").upsert(
+        const { error: syncError } = await supabase.from("reviews").upsert(
           data.reviews.map((r) => ({
             id: r.id,
             product_id: r.productId,
@@ -462,10 +479,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             created_at: r.createdAt,
           }))
         );
+        if (syncError) console.error("[Database] Supabase reviews sync failed:", syncError.message);
       }
 
       if (data.marquees && data.marquees.length > 0) {
-        await supabase.from("marquees").upsert(
+        const { error: syncError } = await supabase.from("marquees").upsert(
           data.marquees.map((m) => ({
             id: m.id,
             text: m.text,
@@ -476,6 +494,33 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             text_color: m.textColor || null,
           }))
         );
+        if (syncError) console.error("[Database] Supabase marquees sync failed:", syncError.message);
+      }
+
+      // Upserts cannot remove rows; propagate deletions by dropping cloud rows
+      // that are no longer part of the in-memory database.
+      const syncedCollections: Array<[string, any[]]> = [
+        ["products", data.products],
+        ["categories", data.categories],
+        ["orders", data.orders],
+        ["users", data.users],
+        ["reviews", data.reviews],
+        ["marquees", data.marquees],
+      ];
+      for (const [table, rows] of syncedCollections) {
+        const currentIds = (rows || []).map((row) => row.id).filter(Boolean);
+        const { data: remoteRows, error: readError } = await supabase.from(table).select("id");
+        if (readError) {
+          console.error(`[Database] Supabase ${table} id read failed:`, readError.message);
+          continue;
+        }
+        const currentSet = new Set(currentIds);
+        const staleIds = (remoteRows || []).map((row: any) => row.id).filter((id: string) => !currentSet.has(id));
+        if (staleIds.length === 0) continue;
+        const { error: deleteError } = await supabase.from(table).delete().in("id", staleIds);
+        if (deleteError) {
+          console.error(`[Database] Supabase ${table} delete of ${staleIds.length} row(s) failed:`, deleteError.message);
+        }
       }
     } catch (e: any) {
       console.warn("[Database] Async sync to Supabase warning:", e?.message || e);

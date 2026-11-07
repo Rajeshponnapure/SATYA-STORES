@@ -1384,13 +1384,17 @@ export default function AdminDashboardPage() {
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authenticator Setup Key:</span>
                     <span className="font-mono font-bold text-slate-900 text-xs tracking-wider select-all">
-                      {admin2faSetup?.secret || "JBSWY3DPEHPK3PXP"}
+                      {admin2faSetup?.secret || "Waiting for setup key..."}
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(admin2faSetup?.secret || "JBSWY3DPEHPK3PXP");
+                      if (!admin2faSetup?.secret) {
+                        toast.error("No 2FA setup key available yet. Reload the page.");
+                        return;
+                      }
+                      navigator.clipboard.writeText(admin2faSetup.secret);
                       toast.success("2FA Secret Key copied to clipboard! Paste it into Google or Microsoft Authenticator.");
                     }}
                     className="py-1 px-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-[11px] flex items-center space-x-1 shrink-0 self-start sm:self-auto"
