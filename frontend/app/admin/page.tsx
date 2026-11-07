@@ -41,6 +41,10 @@ import {
   Database,
   RotateCcw,
   X,
+  ArrowLeft,
+  Home,
+  Grid,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -768,26 +772,63 @@ export default function AdminDashboardPage() {
       <div className="bg-slate-900 text-white rounded-3xl p-5 sm:p-7 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2.5">
-            <span className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400">
+            <button
+              onClick={() => setActiveTab("overview")}
+              className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+              title="Return to Admin Home"
+            >
               <ShieldCheck className="h-6 w-6" />
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight">
-              Satya Stores — Owner Command Center
-            </h1>
+            </button>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 
+                  onClick={() => setActiveTab("overview")}
+                  className="text-xl sm:text-2xl font-black tracking-tight cursor-pointer hover:text-amber-400 transition-colors"
+                >
+                  Satya Stores — Owner Command Center
+                </h1>
+                {activeTab !== "overview" && (
+                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-400/20 text-amber-300 capitalize">
+                    {activeTab}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+                Vasavi Enterprises • Complete store oversight, payments ledger, catalog, users & promotions.
+              </p>
+            </div>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Vasavi Enterprises • Complete store oversight, payments ledger, catalog, users & promotions.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Quick Module Switcher Dropdown */}
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as typeof activeTab)}
+              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold border border-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500/40 cursor-pointer"
+            >
+              <option value="overview">🏠 Admin Home / Overview</option>
+              <option value="products">📦 Products Catalog ({products.length})</option>
+              <option value="orders">🛍️ Orders ({orders.length})</option>
+              <option value="payments">💳 Payments ({pendingPayments.length})</option>
+              <option value="users">👥 Users ({adminUsers.length || 3})</option>
+              <option value="categories">🗂️ Categories ({categories.length})</option>
+              <option value="layout">📱 Home Layout Builder</option>
+              <option value="marquees">📢 Marquees ({marquees.length})</option>
+              <option value="inventory">⚠️ Inventory ({lowStockProducts.length} low)</option>
+              <option value="settings">⚙️ Store Settings</option>
+              <option value="profile">🛡️ Admin Profile & 2FA</option>
+            </select>
+          </div>
+
           <Link
             href="/"
             target="_blank"
             className="inline-flex items-center space-x-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            <span>Open Customer Storefront</span>
+            <span>Storefront</span>
           </Link>
 
           <button
@@ -808,10 +849,50 @@ export default function AdminDashboardPage() {
         </div>
       </div>
 
+      {/* Universal Breadcrumb & Return Bar for All Sub-Pages */}
+      {activeTab !== "overview" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-sm">
+          <div className="flex items-center space-x-2.5">
+            <button
+              onClick={() => setActiveTab("overview")}
+              className="inline-flex items-center space-x-2 py-2 px-4 rounded-xl bg-slate-900 hover:bg-black text-amber-400 font-extrabold text-xs shadow-sm transition-all hover:scale-105 active:scale-95"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>← Back to Admin Home</span>
+            </button>
+            <span className="text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5 capitalize">
+              <span>{activeTab.replace("-", " ")} Management</span>
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-semibold text-slate-400 hidden sm:inline">Jump to module:</span>
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as typeof activeTab)}
+              className="text-xs font-bold py-1.5 px-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            >
+              <option value="overview">🏠 Admin Home / Overview</option>
+              <option value="products">📦 Products Catalog</option>
+              <option value="orders">🛍️ Orders Management</option>
+              <option value="payments">💳 Payments & Settlements</option>
+              <option value="users">👥 User Management</option>
+              <option value="categories">🗂️ Categories</option>
+              <option value="layout">📱 Home Layout Builder</option>
+              <option value="marquees">📢 Marquees & Announcements</option>
+              <option value="inventory">⚠️ Inventory Movements</option>
+              <option value="settings">⚙️ Store Settings</option>
+              <option value="profile">🛡️ Admin Profile & 2FA</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Horizontal Scrollable Tabs Navigation for Mobile & Desktop */}
       <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar p-1.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-sm">
         {[
-          { id: "overview", label: "Overview", icon: TrendingUp },
+          { id: "overview", label: "🏠 Home", icon: Home },
           { id: "profile", label: "Admin Profile & 2FA", icon: ShieldCheck },
           { id: "users", label: `Users (${adminUsers.length || 3})`, icon: Users },
           { id: "payments", label: `Payments (${pendingPayments.length})`, icon: CreditCard },
@@ -908,6 +989,163 @@ export default function AdminDashboardPage() {
               </button>
             </div>
           )}
+
+          {/* Quick Access Admin Module Grid */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                  <Grid className="h-5 w-5 text-amber-500" />
+                  Admin Console Modules
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Select any section below to jump straight to it without scrolling through tabs
+                </p>
+              </div>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+                10 Modules
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+              {[
+                {
+                  id: "products",
+                  title: "Products Catalog",
+                  description: "Manage catalog, drag-and-drop photos (2-10 images), pricing, and undo deletions.",
+                  icon: Layers,
+                  count: `${products.length} Products`,
+                  badgeBg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  iconBg: "bg-emerald-500 text-white",
+                  accentBorder: "hover:border-emerald-500",
+                },
+                {
+                  id: "orders",
+                  title: "Orders & Fulfillment",
+                  description: "Track shipment workflows, status stages (Ordered, Shipped, Delivered), and invoices.",
+                  icon: Package,
+                  count: `${orders.length} Orders`,
+                  badgeBg: "bg-blue-50 text-blue-700 border-blue-200",
+                  iconBg: "bg-blue-600 text-white",
+                  accentBorder: "hover:border-blue-500",
+                },
+                {
+                  id: "payments",
+                  title: "Payments & Verification",
+                  description: "Review manual UPI UTR 12-digit transaction proofs, bank receipts & Razorpay logs.",
+                  icon: CreditCard,
+                  count: pendingPayments.length > 0 ? `${pendingPayments.length} Need Review` : "All Verified",
+                  badgeBg: pendingPayments.length > 0 ? "bg-amber-100 text-amber-800 border-amber-300 font-black animate-pulse" : "bg-slate-100 text-slate-700 border-slate-200",
+                  iconBg: "bg-amber-500 text-white",
+                  accentBorder: "hover:border-amber-500",
+                },
+                {
+                  id: "users",
+                  title: "Customer & Admin Users",
+                  description: "Manage registered user accounts, Supabase credentials, admin privileges & roles.",
+                  icon: Users,
+                  count: `${adminUsers.length || 3} Accounts`,
+                  badgeBg: "bg-indigo-50 text-indigo-700 border-indigo-200",
+                  iconBg: "bg-indigo-600 text-white",
+                  accentBorder: "hover:border-indigo-500",
+                },
+                {
+                  id: "categories",
+                  title: "Categories & Tax Rates",
+                  description: "Manage store categories, sub-categories, HSN codes, and GST rates for tax invoices.",
+                  icon: Layout,
+                  count: `${categories.length} Categories`,
+                  badgeBg: "bg-purple-50 text-purple-700 border-purple-200",
+                  iconBg: "bg-purple-600 text-white",
+                  accentBorder: "hover:border-purple-500",
+                },
+                {
+                  id: "layout",
+                  title: "Home Layout Builder",
+                  description: "Reorderable storefront grid containers, hero sliders, flash sale cards & banners.",
+                  icon: Smartphone,
+                  count: `${homepageSections.length} Sections`,
+                  badgeBg: "bg-violet-50 text-violet-700 border-violet-200",
+                  iconBg: "bg-violet-600 text-white",
+                  accentBorder: "hover:border-violet-500",
+                },
+                {
+                  id: "marquees",
+                  title: "Marquees & Announcements",
+                  description: "Manage ticker announcement ribbons, sale offers, discount alerts & moving banners.",
+                  icon: Volume2,
+                  count: `${marquees.length} Ribbons`,
+                  badgeBg: "bg-cyan-50 text-cyan-700 border-cyan-200",
+                  iconBg: "bg-cyan-600 text-white",
+                  accentBorder: "hover:border-cyan-500",
+                },
+                {
+                  id: "inventory",
+                  title: "Inventory & Stock Alerts",
+                  description: "Live warehouse stock tracking, low-inventory triggers & batch inventory logs.",
+                  icon: AlertTriangle,
+                  count: lowStockProducts.length > 0 ? `${lowStockProducts.length} Low Stock` : "All Healthy",
+                  badgeBg: lowStockProducts.length > 0 ? "bg-rose-100 text-rose-800 border-rose-300 font-bold" : "bg-emerald-50 text-emerald-700 border-emerald-200",
+                  iconBg: lowStockProducts.length > 0 ? "bg-rose-500 text-white" : "bg-slate-700 text-white",
+                  accentBorder: "hover:border-rose-500",
+                },
+                {
+                  id: "settings",
+                  title: "Store & Gateway Settings",
+                  description: "Configure UPI IDs, merchant QR codes, Razorpay secrets, and delivery charges.",
+                  icon: Settings,
+                  count: "Store Config",
+                  badgeBg: "bg-slate-100 text-slate-700 border-slate-200",
+                  iconBg: "bg-slate-800 text-white",
+                  accentBorder: "hover:border-slate-800",
+                },
+                {
+                  id: "profile",
+                  title: "Admin Profile & 2FA",
+                  description: "Supabase cloud database sync, 2FA Google Authenticator, and password security.",
+                  icon: ShieldCheck,
+                  count: "Security & Cloud",
+                  badgeBg: "bg-teal-50 text-teal-700 border-teal-200",
+                  iconBg: "bg-teal-600 text-white",
+                  accentBorder: "hover:border-teal-500",
+                },
+              ].map((item) => {
+                const ItemIcon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id as typeof activeTab);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className={`group text-left p-4 sm:p-5 rounded-2xl bg-white/95 border border-slate-200 shadow-sm transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 ${item.accentBorder} flex flex-col justify-between`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className={`p-2.5 rounded-xl ${item.iconBg} shadow-sm group-hover:scale-110 transition-transform`}>
+                          <ItemIcon className="h-5 w-5" />
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.badgeBg}`}>
+                          {item.count}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-black text-slate-900 group-hover:text-amber-600 transition-colors">
+                        {item.title}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                        {item.description}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-600 group-hover:text-amber-600 transition-colors">
+                      <span>Open Module</span>
+                      <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
