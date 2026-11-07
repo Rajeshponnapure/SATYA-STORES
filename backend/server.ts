@@ -46,14 +46,6 @@ if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
 
 if (!process.env.VERCEL) app.use("/uploads", express.static(uploadsDir));
 
-// Normalize URL so requests routed with or without /api prefix match our endpoints
-app.use((req, _res, next) => {
-  if (!req.url.startsWith("/api") && !req.url.startsWith("/uploads")) {
-    req.url = "/api" + (req.url.startsWith("/") ? req.url : "/" + req.url);
-  }
-  next();
-});
-
 // Enable CORS for frontend clients (local, preview, production)
 app.use(
   cors({
@@ -1096,14 +1088,6 @@ if (!process.env.VERCEL) {
     console.log(`[Satya Stores Backend] Server running on port ${PORT}`);
     console.log(`[Satya Stores Backend] REST API endpoint: http://localhost:${PORT}/api`);
   });
-}
-
-// Export for both ESM (import app from './server') and CommonJS (require('./server'))
-// to guarantee complete compatibility with Vercel Serverless Function runtime and Node.js.
-(app as any).default = app;
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = app;
-  (module.exports as any).default = app;
 }
 
 export default app;
