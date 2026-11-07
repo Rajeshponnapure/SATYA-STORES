@@ -594,10 +594,19 @@ app.delete("/api/categories/:id", async (req: Request, res: Response) => {
 // ==========================================
 // ORDERS & LIFECYCLE APIs
 // ==========================================
-app.get("/api/orders", requireAdminSession, async (_req: Request, res: Response) => {
+app.get("/api/orders", async (req: Request, res: Response) => {
   try {
-    const orders = await orderService.getAllOrders();
-    res.json({ success: true, orders });
+    if (hasAdminSession(req)) {
+      const orders = await orderService.getAllOrders();
+      return res.json({ success: true, orders });
+    }
+    const customerId = getCustomerSessionId(req);
+    if (customerId) {
+      const orders = await orderService.getUserOrders(customerId);
+      return res.json({ success: true, orders });
+    }
+    // Return empty list gracefully if visitor is not logged in
+    res.json({ success: true, orders: [] });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }

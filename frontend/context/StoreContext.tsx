@@ -166,7 +166,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<StoreSettings>(initialStoreSettings);
   const [marquees, setMarquees] = useState<MarqueeItem[]>(initialMarquees);
   const [homepageSections, setHomepageSections] = useState<HomepageSection[]>(initialHomepageSections);
-  const [isLoadingBackend, setIsLoadingBackend] = useState<boolean>(true);
+  const [isLoadingBackend, setIsLoadingBackend] = useState<boolean>(false);
 
   // User State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -230,15 +230,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Fetch live backend data
   const refreshBackendData = useCallback(async () => {
     try {
-      setIsLoadingBackend(true);
+      const fetchWithTimeout = (url: string, ms = 8000) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), ms);
+        return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+      };
+
       const [prodRes, catRes, ordRes, setRes, marqRes, layRes, promoRes] = await Promise.allSettled([
-        fetch("/api/products"),
-        fetch("/api/categories"),
-        fetch("/api/orders"),
-        fetch("/api/settings"),
-        fetch("/api/marquees"),
-        fetch("/api/layout"),
-        fetch("/api/promotions"),
+        fetchWithTimeout("/api/products"),
+        fetchWithTimeout("/api/categories"),
+        fetchWithTimeout("/api/orders"),
+        fetchWithTimeout("/api/settings"),
+        fetchWithTimeout("/api/marquees"),
+        fetchWithTimeout("/api/layout"),
+        fetchWithTimeout("/api/promotions"),
       ]);
 
       if (prodRes.status === "fulfilled" && prodRes.value.ok) {
