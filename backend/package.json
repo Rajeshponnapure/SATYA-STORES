@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Satya Stores Express & Node.js REST API Backend on Port 5000",
-  "main": "server.ts",
+  "main": "server.js",
   "scripts": {
     "dev": "tsx watch dev-server.ts",
     "build": "tsc",
