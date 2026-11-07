@@ -1057,9 +1057,13 @@ app.use((error: any, _req: Request, res: Response, _next: import("express").Next
   res.status(status).json({ success: false, error: status === 413 ? "Request payload is too large." : "Request could not be processed." });
 });
 
-app.listen(PORT, () => {
-  console.log(`[Satya Stores Backend] Server running on port ${PORT}`);
-  console.log(`[Satya Stores Backend] REST API endpoint: http://localhost:${PORT}/api`);
-});
+// Vercel adapts the exported Express application to its function runtime. A
+// standalone listener is only needed for local development and non-Vercel hosts.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`[Satya Stores Backend] Server running on port ${PORT}`);
+    console.log(`[Satya Stores Backend] REST API endpoint: http://localhost:${PORT}/api`);
+  });
+}
 
 export default app;
