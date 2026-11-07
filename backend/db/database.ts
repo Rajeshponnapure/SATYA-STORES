@@ -244,50 +244,53 @@ export async function getDatabase(): Promise<DatabaseSchema> {
         supabase.from("marquees").select("*"),
       ]);
 
-      if (!prodErr && prodData && prodData.length > 0) {
-        const liveProducts = prodData.map(mapSupabaseProduct);
-        const liveCategories = (catData || []).map(mapSupabaseCategory);
-        const liveUsers = (usersData || []).map(mapSupabaseUser);
-        const liveOrders = (ordData || []).map((o: any) => ({
-          ...o,
-          orderNumber: o.order_number || o.orderNumber,
-          userId: o.user_id || o.userId,
-          customerName: o.customer_name || o.customerName,
-          customerMobile: o.customer_mobile || o.customerMobile,
-          customerEmail: o.customer_email || o.customerEmail,
-          itemsSnapshot: o.items_snapshot || o.itemsSnapshot || [],
-          shippingAddressSnapshot: o.shipping_address_snapshot || o.shippingAddressSnapshot || {},
-          orderStatus: o.order_status || o.orderStatus,
-          paymentStatus: o.payment_status || o.paymentStatus,
-          deliveryStatus: o.delivery_status || o.deliveryStatus,
-          paymentMethod: o.payment_method || o.paymentMethod,
-          paymentReference: o.payment_reference || o.paymentReference,
-          paymentEvidenceUrl: o.payment_evidence_url || o.paymentEvidenceUrl,
-          totalAmount: Number(o.total_amount ?? o.totalAmount ?? 0),
-          subtotal: Number(o.subtotal ?? 0),
-          discount: Number(o.discount ?? 0),
-          shippingCharge: Number(o.shipping_charge ?? o.shippingCharge ?? 0),
-        }));
+      const liveProducts = prodData && prodData.length > 0 ? prodData.map(mapSupabaseProduct) : (initialProducts || []);
+      const liveCategories = catData && catData.length > 0 ? catData.map(mapSupabaseCategory) : (initialCategories || []);
+      const liveUsers = usersData && usersData.length > 0 ? usersData.map(mapSupabaseUser) : (initialUsers || []);
+      const liveOrders = (ordData || []).map((o: any) => ({
+        ...o,
+        orderNumber: o.order_number || o.orderNumber,
+        userId: o.user_id || o.userId,
+        customerName: o.customer_name || o.customerName,
+        customerMobile: o.customer_mobile || o.customerMobile,
+        customerEmail: o.customer_email || o.customerEmail,
+        itemsSnapshot: o.items_snapshot || o.itemsSnapshot || [],
+        shippingAddressSnapshot: o.shipping_address_snapshot || o.shippingAddressSnapshot || {},
+        orderStatus: o.order_status || o.orderStatus,
+        paymentStatus: o.payment_status || o.paymentStatus,
+        deliveryStatus: o.delivery_status || o.deliveryStatus,
+        paymentMethod: o.payment_method || o.paymentMethod,
+        paymentReference: o.payment_reference || o.paymentReference,
+        paymentEvidenceUrl: o.payment_evidence_url || o.paymentEvidenceUrl,
+        totalAmount: Number(o.total_amount ?? o.totalAmount ?? 0),
+        subtotal: Number(o.subtotal ?? 0),
+        discount: Number(o.discount ?? 0),
+        shippingCharge: Number(o.shipping_charge ?? o.shippingCharge ?? 0),
+      }));
 
-        const liveSchema: DatabaseSchema = {
-          products: liveProducts,
-          categories: liveCategories,
-          orders: liveOrders,
-          settings: mapSupabaseSettings(settingsData),
-          promotions: initialPromotions || [],
-          inventoryMovements: [],
-          users: liveUsers.length > 0 ? liveUsers : (initialUsers || []),
-          adminProfile: mapSupabaseAdmin(adminData),
-          reviews: (revData as any) || [],
-          coupons: initialCoupons || [],
-          marquees: (marqData && marqData.length > 0 ? (marqData as any) : initialMarquees) || [],
-          homepageSections: initialHomepageSections || [],
-          deletedProducts: [],
-        };
+      const liveSchema: DatabaseSchema = {
+        products: liveProducts,
+        categories: liveCategories,
+        orders: liveOrders,
+        settings: mapSupabaseSettings(settingsData),
+        promotions: initialPromotions || [],
+        inventoryMovements: [],
+        users: liveUsers,
+        adminProfile: mapSupabaseAdmin(adminData),
+        reviews: (revData as any) || [],
+        coupons: initialCoupons || [],
+        marquees: (marqData && marqData.length > 0 ? (marqData as any) : initialMarquees) || [],
+        homepageSections: initialHomepageSections || [],
+        deletedProducts: [],
+      };
 
-        memoryDb = liveSchema;
-        return liveSchema;
+      // Seed initial data into Supabase if connecting to an empty database
+      if (!usersData || usersData.length === 0 || !prodData || prodData.length === 0) {
+        saveDatabase(liveSchema).catch(() => undefined);
       }
+
+      memoryDb = liveSchema;
+      return liveSchema;
     } catch (e: any) {
       console.warn("[Database] Live Supabase query notice, falling back to local store data:", e?.message || e);
     }
@@ -318,7 +321,7 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
     } catch {}
   }
 
-  // Sync mutations to live Supabase Cloud Database if configured
+  // Sync all records directly to live Supabase Cloud Database if configured
   if (isSupabaseConfigured && supabase) {
     try {
       if (data.products && data.products.length > 0) {
@@ -366,6 +369,8 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             favorites: u.favorites || [],
             addresses: u.addresses || [],
             profile_image: u.profileImage || null,
+            two_factor_secret: u.twoFactorSecret || null,
+            two_factor_enabled: u.twoFactorEnabled || false,
           }))
         );
       }
@@ -380,6 +385,31 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             image: c.image,
             display_order: c.displayOrder,
             status: c.status,
+          }))
+        );
+      }
+
+      if (data.orders && data.orders.length > 0) {
+        await supabase.from("orders").upsert(
+          data.orders.map((o) => ({
+            id: o.id,
+            order_number: o.orderNumber,
+            user_id: o.userId,
+            customer_name: o.customerName,
+            customer_mobile: o.customerMobile,
+            customer_email: o.customerEmail,
+            items_snapshot: o.itemsSnapshot,
+            shipping_address_snapshot: o.shippingAddressSnapshot,
+            order_status: o.orderStatus,
+            payment_status: o.paymentStatus,
+            delivery_status: o.deliveryStatus,
+            payment_method: o.paymentMethod,
+            payment_reference: o.paymentReference,
+            payment_evidence_url: o.paymentEvidenceUrl,
+            total_amount: o.totalAmount,
+            subtotal: o.subtotal,
+            discount: o.discount,
+            shipping_charge: o.shippingCharge,
           }))
         );
       }
@@ -417,6 +447,35 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
           two_factor_pin: data.adminProfile.twoFactorPin,
           profile_image: data.adminProfile.profileImage || null,
         });
+      }
+
+      if (data.reviews && data.reviews.length > 0) {
+        await supabase.from("reviews").upsert(
+          data.reviews.map((r) => ({
+            id: r.id,
+            product_id: r.productId,
+            user_id: r.userId,
+            user_name: r.userName,
+            rating: r.rating,
+            title: r.title,
+            comment: r.comment,
+            created_at: r.createdAt,
+          }))
+        );
+      }
+
+      if (data.marquees && data.marquees.length > 0) {
+        await supabase.from("marquees").upsert(
+          data.marquees.map((m) => ({
+            id: m.id,
+            text: m.text,
+            link: m.link || null,
+            position: m.position,
+            status: m.status,
+            background_color: m.backgroundColor || null,
+            text_color: m.textColor || null,
+          }))
+        );
       }
     } catch (e: any) {
       console.warn("[Database] Async sync to Supabase warning:", e?.message || e);
