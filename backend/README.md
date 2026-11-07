@@ -1,46 +1,25 @@
-# 🛠️ Satya Stores — Backend Architecture
+# Backend
 
-This directory houses all server-side logic, database integrations, and transactional business services for Satya Stores.
+The root [project README](../README.md) is the source of truth for architecture, API overview, setup, environment variables, database configuration, and commands.
 
----
+This application is an Express and TypeScript REST API. It contains services for accounts, catalog, orders, payments, inventory, delivery, and store content.
 
-## Folder Structure
+## Local development
 
-```
-src/backend/
-├── db/
-│   ├── database.ts      # 100% Free Persistent Local JSON Database Adapter
-│   └── supabase.ts      # 100% Free Supabase PostgreSQL Cloud Integration
-│
-├── services/
-│   ├── orderService.ts      # Atomic stock reservation & immutable order generation
-│   ├── paymentService.ts    # Manual UPI/Bank UTR submission & verification logic
-│   ├── inventoryService.ts  # Real-time stock counts & audit movement logging
-│   ├── productService.ts    # Electronics catalog & SKU operations
-│   └── deliveryService.ts   # Fulfillment milestones & manual courier tracking
-│
-└── index.ts             # Unified barrel export
+From this directory:
+
+```powershell
+npm install
+npm run dev
 ```
 
----
+The API runs at http://localhost:5000 by default. Its health endpoint is /api/health. Start the frontend separately; see the root README.
 
-## 📡 REST API Route Handlers
+## Commands
 
-Located under `src/app/api/`:
-- `POST /api/orders` — Atomically reserves stock and creates order
-- `GET /api/orders` — Returns all orders from database
-- `GET /api/orders/[id]` — Returns single order with milestone tracking
-- `POST /api/orders/[id]/payment` — Submits customer UTR and receipt proof
-- `POST /api/admin/payments/verify` — Store owner verifies credit, finalizes stock deduction
-- `POST /api/admin/payments/reject` — Store owner rejects payment with mandatory reason
-- `POST /api/admin/inventory/adjust` — Manual stock counter adjustment with audit trail
-- `PATCH /api/admin/deliveries` — Updates fulfillment status and courier consignment
-- `GET, POST /api/products` — Catalog retrieval and product publishing
-- `GET, POST /api/settings` — Updates official store UPI ID and Bank account details
+- `npm run build` — compile and type-check backend TypeScript.
+- `npm start` — start the API server.
 
----
+## Database
 
-## 💾 Zero-Budget Database Setup
-1. **Local Mode (Default)**: Automatically runs against `data/database.json`. Zero accounts, zero credit card, 100% free forever.
-2. **Supabase Cloud Mode**: Put your free Project URL and Anon Key in `.env.local` and run `supabase-schema.sql` in the Supabase SQL editor.
-
+Configure Supabase in backend/.env to use cloud persistence. Without Supabase, the API stores data in backend/data/database.json. The initial schema is in schema.sql; incremental changes are in migrations/.

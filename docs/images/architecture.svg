@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Satya Stores application architecture</title>
+  <desc id="desc">Next.js mobile-first storefront connects through API rewrites to an Express API, which uses Supabase or local JSON persistence and payment providers.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#f8fafc"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>
+    <linearGradient id="blue" x2="1" y2="1"><stop stop-color="#2563eb"/><stop offset="1" stop-color="#4f46e5"/></linearGradient>
+    <linearGradient id="mint" x2="1" y2="1"><stop stop-color="#d1fae5"/><stop offset="1" stop-color="#ecfdf5"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#334155" flood-opacity=".12"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#64748b"/></marker>
+  </defs>
+  <rect width="1200" height="650" rx="32" fill="url(#bg)"/>
+  <text x="60" y="68" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="3" fill="#2563eb">SATYA STORES · SYSTEM MAP</text>
+  <text x="60" y="112" font-family="Arial,sans-serif" font-size="34" font-weight="800" fill="#0f172a">One storefront, API, and persistence layer</text>
+  <g filter="url(#shadow)">
+    <rect x="55" y="170" width="320" height="330" rx="24" fill="#fff"/>
+    <rect x="440" y="170" width="320" height="330" rx="24" fill="#fff"/>
+    <rect x="825" y="170" width="320" height="330" rx="24" fill="#fff"/>
+  </g>
+  <rect x="55" y="170" width="320" height="12" rx="6" fill="url(#blue)"/>
+  <rect x="440" y="170" width="320" height="12" rx="6" fill="#0f172a"/>
+  <rect x="825" y="170" width="320" height="12" rx="6" fill="#10b981"/>
+  <text x="82" y="224" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="1" fill="#2563eb">WEB CLIENT</text>
+  <text x="82" y="261" font-family="Arial,sans-serif" font-size="26" font-weight="800" fill="#0f172a">Next.js 15</text>
+  <text x="82" y="292" font-family="Arial,sans-serif" font-size="15" fill="#475569">React · TypeScript · Tailwind CSS</text>
+  <g font-family="Arial,sans-serif" font-size="14" fill="#334155">
+    <circle cx="91" cy="337" r="5" fill="#3b82f6"/><text x="107" y="342">Mobile storefront &amp; product catalog</text>
+    <circle cx="91" cy="373" r="5" fill="#3b82f6"/><text x="107" y="378">Cart, checkout, orders &amp; customer area</text>
+    <circle cx="91" cy="409" r="5" fill="#3b82f6"/><text x="107" y="414">Admin dashboard &amp; profile management</text>
+    <circle cx="91" cy="445" r="5" fill="#3b82f6"/><text x="107" y="450">Responsive UI, motion &amp; shared state</text>
+  </g>
+  <rect x="82" y="465" width="108" height="25" rx="12" fill="#dbeafe"/><text x="98" y="483" font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#1d4ed8">localhost:3000</text>
+
+  <text x="467" y="224" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="1" fill="#334155">APPLICATION API</text>
+  <text x="467" y="261" font-family="Arial,sans-serif" font-size="26" font-weight="800" fill="#0f172a">Express + TypeScript</text>
+  <text x="467" y="292" font-family="Arial,sans-serif" font-size="15" fill="#475569">REST routes · business services</text>
+  <g font-family="Arial,sans-serif" font-size="14" fill="#334155">
+    <circle cx="476" cy="337" r="5" fill="#0f172a"/><text x="492" y="342">Users, sessions &amp; profile photos</text>
+    <circle cx="476" cy="373" r="5" fill="#0f172a"/><text x="492" y="378">Catalog, stock &amp; order lifecycle</text>
+    <circle cx="476" cy="409" r="5" fill="#0f172a"/><text x="492" y="414">Payment verification &amp; refunds</text>
+    <circle cx="476" cy="445" r="5" fill="#0f172a"/><text x="492" y="450">Uploads &amp; public static media</text>
+  </g>
+  <rect x="467" y="465" width="108" height="25" rx="12" fill="#e2e8f0"/><text x="483" y="483" font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#334155">localhost:5000</text>
+
+  <text x="852" y="224" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="1" fill="#059669">DATA &amp; SERVICES</text>
+  <text x="852" y="261" font-family="Arial,sans-serif" font-size="22" font-weight="800" fill="#0f172a">Persistence &amp; payments</text>
+  <text x="852" y="292" font-family="Arial,sans-serif" font-size="15" fill="#475569">Supabase PostgreSQL or local JSON</text>
+  <g font-family="Arial,sans-serif" font-size="14" fill="#334155">
+    <circle cx="861" cy="337" r="5" fill="#10b981"/><text x="877" y="342">Products, accounts &amp; admin profile</text>
+    <circle cx="861" cy="373" r="5" fill="#10b981"/><text x="877" y="378">Orders, addresses &amp; inventory</text>
+    <circle cx="861" cy="409" r="5" fill="#10b981"/><text x="877" y="414">Razorpay checkout (when configured)</text>
+    <circle cx="861" cy="445" r="5" fill="#10b981"/><text x="877" y="450">UPI / bank transfer verification flow</text>
+  </g>
+  <rect x="852" y="465" width="115" height="25" rx="12" fill="url(#mint)"/><text x="868" y="483" font-family="Arial,sans-serif" font-size="12" font-weight="700" fill="#047857">configurable</text>
+
+  <path d="M382 335h45" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="381" y="319" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#64748b">/api rewrite</text>
+  <path d="M767 335h45" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="779" y="319" font-family="Arial,sans-serif" font-size="11" font-weight="700" fill="#64748b">DB adapter</text>
+
+  <rect x="55" y="545" width="1090" height="58" rx="18" fill="#0f172a"/>
+  <text x="83" y="581" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#fff">Development:</text>
+  <text x="190" y="581" font-family="Arial,sans-serif" font-size="15" fill="#cbd5e1">Run frontend and backend in separate terminals; Next.js proxies /api and /uploads to Express.</text>
+</svg>
