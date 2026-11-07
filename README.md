@@ -162,18 +162,26 @@ The backend URL defaults to port 5000 in local development. Set it when the API 
 ~~~dotenv
 PORT=5000
 FRONTEND_URL=http://localhost:3000
-ADMIN_SESSION_SECRET=replace-with-a-long-random-secret
+SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 
-# Optional Supabase cloud database
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+# Local or Vercel Supabase backend credentials (never put the secret key in frontend/.env.local)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=
+# Existing projects can use SUPABASE_SERVICE_ROLE_KEY instead of SUPABASE_SECRET_KEY
 
-# Optional Razorpay payment provider
+# Production payment credentials; omit in development to use local-only mock behavior
 RAZORPAY_KEY_ID=
 RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
 ~~~
 
 Keep the admin-session secret and Razorpay secret on the backend. Configure database credentials and Supabase row-level security for the intended deployment.
+
+## Deploy on Vercel
+
+The root `vercel.json` defines the `backend` Express service and `frontend` Next.js service. Select **Services** as the Vercel project's framework, connect the repository root, and configure secrets on the backend service only: `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`), `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control. Uploaded product and profile images are stored in Vercel Blob; the database stores their public URLs. Images are limited to 3 MB.
+
+The public `/api/*` path is routed to the backend; all other paths are routed to the frontend. In local development, Next.js continues to proxy `/api/*` and `/uploads/*` to `127.0.0.1:5000`.
 
 ## Database setup
 
@@ -183,14 +191,13 @@ Without Supabase credentials, the backend persists data to backend/data/database
 
 ### Supabase mode
 
-1. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in backend/.env.
+1. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in backend/.env. The secret key is backend-only and bypasses RLS; never expose it to the browser.
 2. For a new project, run backend/schema.sql in the Supabase SQL editor.
-3. For an existing project, apply the SQL files in backend/migrations. Profile-photo persistence requires backend/migrations/20261107_profile_images.sql.
-4. Restart the backend and confirm its database status endpoint while signed in as the store owner.
+3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql` and the profile-image migration in the Supabase SQL editor.
+4. Generate a new admin password hash with `cd backend` then `npm run hash-password`. In Supabase SQL Editor, create the owner account with the generated hash (or update the existing owner row): `INSERT INTO users (id, full_name, email, mobile_number, password, role, account_status) VALUES ('usr-admin-1', 'Store Owner', 'admin@sathyastores.com', '+910000000000', '<PASTE_HASH_HERE>', 'owner', 'active') ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, role = 'owner', account_status = 'active';` Replace the sample phone with the owner's real number. Never use the old demo passwords.
+5. Keep RLS enabled and do not add anon/authenticated access policies. The public client key is no longer used by the app. Rotate any credentials that were previously exposed or used in a deployed environment.
 
-The database adapter maps database fields to application types and maintains a local JSON cache. Failed Supabase writes are surfaced as errors instead of being reported as successful local-only profile updates.
-
-Before production use, review the access policies in backend/schema.sql. The checked-in schema includes permissive policies intended for the demo setup; replace them with policies suited to your authentication and data-access model before storing real customer or payment data.
+Vercel production runs fail closed if Supabase is missing or unavailable; it will not fall back to ephemeral JSON storage. Public catalog reads and store settings remain available for the storefront. Order data, user profiles, and all mutation routes require signed sessions and server-side validation.
 
 ## API overview
 
@@ -203,7 +210,7 @@ API routes are defined in backend/server.ts and use the /api prefix.
 - **Store operations:** admin profiles, users, orders, payments, refunds, inventory, delivery, coupons, layout, and settings.
 - **Infrastructure:** health check, database status, and image upload.
 
-Admin API requests use an expiring HttpOnly session cookie. See backend/utils/adminSession.ts and the owner-only middleware in backend/server.ts for the access-control implementation.
+Admin and customer API requests use expiring, signed HttpOnly cookies. Customer routes are scoped to the signed-in user; admin routes require the owner session. See backend/utils/session.ts, backend/server.ts, and the database-lockdown migration.
 
 ## Common commands
 

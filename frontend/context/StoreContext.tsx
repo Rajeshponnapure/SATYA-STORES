@@ -457,7 +457,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           paymentMethod: orderData.paymentMethod,
           userId: currentUser?.id,
           customerEmail: currentUser?.email,
-          discount: discountAmount,
+          couponCode: appliedCoupon?.code,
         }),
       });
 
@@ -472,55 +472,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refreshBackendData();
       return data.order;
     } catch {
-      // Local fallback
-      const orderNumber = `SAT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const shippingCharge = cartTotal >= settings.freeShippingThreshold ? 0 : settings.standardShippingFee;
-      const totalAmount = Math.max(0, cartTotal - discountAmount + shippingCharge);
-
-      const newOrder: Order = {
-        id: `ord-${Date.now()}`,
-        orderNumber,
-        userId: currentUser?.id || "guest",
-        customerName: orderData.recipientName,
-        customerMobile: orderData.mobileNumber,
-        customerEmail: currentUser?.email || "customer@example.com",
-        itemsSnapshot: cart.map((it) => ({
-          productId: it.productId,
-          productName: it.product.productName,
-          sku: it.product.sku,
-          variantSku: it.variantSku,
-          unitPrice: it.unitPrice,
-          mrp: it.product.mrp,
-          quantity: it.quantity,
-          image: it.product.images[0] || "",
-        })),
-        shippingAddressSnapshot: {
-          id: `addr-${Date.now()}`,
-          userId: currentUser?.id || "guest",
-          recipientName: orderData.recipientName,
-          mobileNumber: orderData.mobileNumber,
-          addressLine1: orderData.addressLine1,
-          addressLine2: orderData.addressLine2,
-          city: orderData.city,
-          state: orderData.state,
-          postalCode: orderData.postalCode,
-          isDefault: true,
-        },
-        subtotal: cartTotal,
-        discount: discountAmount,
-        shippingCharge,
-        totalAmount,
-        orderStatus: "Order Created",
-        paymentStatus: "Awaiting Payment",
-        deliveryStatus: "Not Arranged",
-        paymentMethod: orderData.paymentMethod,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      setOrders((prev) => [newOrder, ...prev]);
-      clearCart();
-      return newOrder;
+      toast.error("Could not create your order. Please try again when the server is available.");
+      return null;
     }
   };
 
@@ -547,11 +500,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toast.success("UTR Reference submitted! Our verification desk will review it shortly.");
       return true;
     } catch {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, paymentReference: utr, paymentStatus: "Verification Pending" } : o))
-      );
-      toast.success("UTR Reference recorded locally.");
-      return true;
+      toast.error("Could not submit payment details. Please try again.");
+      return false;
     }
   };
 
@@ -769,6 +719,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logoutCustomer = () => {
+    void fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setCurrentUser(null);
     localStorage.removeItem("satya_customer_user");
     toast.info("Signed out of your customer account");
@@ -835,8 +786,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
     } catch {}
-    toast.success("Review recorded!");
-    return true;
+    toast.error("Could not submit the review. Please try again.");
+    return false;
   };
 
   const fetchProductReviews = async (productId: string): Promise<Review[]> => {
@@ -1160,9 +1111,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (res.ok && data.success && data.url) {
         return { success: true, url: data.url };
       }
-      return { success: true, url: fileData };
+      return { success: false, error: data.error || "Image upload failed." };
     } catch {
-      return { success: true, url: fileData };
+      return { success: false, error: "Image upload failed. Check your connection and try again." };
     }
   };
 

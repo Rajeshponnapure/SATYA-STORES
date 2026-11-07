@@ -106,13 +106,13 @@ export default function SignupPage() {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-              Password (min 6 characters)
+              Password (min 12 characters)
             </label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 required
-                minLength={6}
+                minLength={12}
                 placeholder="Create a password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

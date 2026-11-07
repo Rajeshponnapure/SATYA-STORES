@@ -89,6 +89,7 @@ export default function AdminDashboardPage() {
     adminProfile,
     fetchAdminProfile,
     updateAdminProfile,
+    uploadImage,
     fetchAdmin2faSetup,
     verifyAdmin2faCode,
     generateAdmin2fa,
@@ -997,9 +998,11 @@ export default function AdminDashboardPage() {
                   <ProfileImagePicker
                     image={adminProfile?.profileImage}
                     name={editAdminName}
-                    onUpload={async (_fileName, fileData) => {
-                      const saved = await updateAdminProfile({ profileImage: fileData });
-                      return saved ? fileData : null;
+                    onUpload={async (fileName, fileData) => {
+                      const uploaded = await uploadImage(fileName, fileData);
+                      if (!uploaded.success || !uploaded.url) return null;
+                      const saved = await updateAdminProfile({ profileImage: uploaded.url });
+                      return saved ? uploaded.url : null;
                     }}
                   />
                   <div>
@@ -2462,7 +2465,7 @@ export default function AdminDashboardPage() {
                   <input
                     type={showNewUserPassword ? "text" : "password"}
                     required
-                    minLength={6}
+                    minLength={12}
                     placeholder="Enter new password"
                     value={newUserPassword}
                     onChange={(e) => setNewUserPassword(e.target.value)}

@@ -77,6 +77,11 @@ export default function CheckoutPage() {
 
   const handleAddressSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast.error("Sign in before placing an order.");
+      router.push("/auth/login?redirect=/checkout");
+      return;
+    }
     if (!recipientName.trim() || !mobileNumber.trim() || !addressLine1.trim() || !city.trim() || !postalCode.trim()) {
       toast.error("Please fill in all mandatory delivery address fields.");
       return;

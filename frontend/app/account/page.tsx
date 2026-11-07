@@ -35,6 +35,7 @@ export default function AccountPage() {
     currentUser,
     logoutCustomer,
     updateProfile,
+    uploadImage,
     orders,
     favorites,
     settings,
@@ -282,9 +283,10 @@ export default function AccountPage() {
               image={currentUser.profileImage}
               name={currentUser.fullName}
               onUpload={async (fileName, fileData) => {
-                void fileName;
-                const saved = await updateProfile({ profileImage: fileData });
-                return saved ? fileData : null;
+                const uploaded = await uploadImage(fileName, fileData);
+                if (!uploaded.success || !uploaded.url) return null;
+                const saved = await updateProfile({ profileImage: uploaded.url });
+                return saved ? uploaded.url : null;
               }}
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

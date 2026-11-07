@@ -20,7 +20,22 @@ const nextConfig = {
       "via.placeholder.com",
     ],
   },
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ...(process.env.VERCEL ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }] : [])
+      ]
+    }];
+  },
   async rewrites() {
+    // In Vercel Services deployments, the root vercel.json routes API and
+    // upload requests directly to the backend service.
+    if (process.env.VERCEL) return [];
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:5000";
     return [
       {

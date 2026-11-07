@@ -1,3 +1,5 @@
+import crypto from "crypto";
+import { hashPassword } from "../utils/auth";
 import {
   Category,
   Product,
@@ -682,7 +684,7 @@ export const initialUsers: User[] = [
     fullName: "Satya Store Owner",
     email: "admin@sathyastores.com",
     mobileNumber: "+91 98480 22338",
-    password: "admin123", // Default administrative password
+    password: hashPassword(crypto.randomBytes(32).toString("hex")),
     role: "owner",
     mobileVerified: true,
     emailVerified: true,
@@ -694,7 +696,7 @@ export const initialUsers: User[] = [
     fullName: "Rajesh Varma",
     email: "rajesh.varma@gmail.com",
     mobileNumber: "+91 98490 12345",
-    password: "customer123",
+    password: hashPassword(crypto.randomBytes(32).toString("hex")),
     role: "customer",
     mobileVerified: true,
     emailVerified: true,
@@ -720,7 +722,7 @@ export const initialUsers: User[] = [
     fullName: "Priya Sharma",
     email: "priya.sharma@yahoo.com",
     mobileNumber: "+91 94401 98765",
-    password: "customer123",
+    password: hashPassword(crypto.randomBytes(32).toString("hex")),
     role: "customer",
     mobileVerified: true,
     emailVerified: true,
@@ -746,7 +748,7 @@ export const initialUsers: User[] = [
     fullName: "Kiran Kumar",
     email: "kiran.kumar@outlook.com",
     mobileNumber: "+91 97001 12233",
-    password: "customer123",
+    password: hashPassword(crypto.randomBytes(32).toString("hex")),
     role: "customer",
     mobileVerified: true,
     emailVerified: true,
@@ -859,4 +861,3 @@ export const initialHomepageSections: HomepageSection[] = [
   { id: "sec-best-sellers", type: "best_sellers", title: "Best Selling Electronics", enabled: true, order: 5 },
   { id: "sec-trust", type: "trust_badges", title: "Why Buy From Satya Stores", enabled: true, order: 6 },
 ];
-

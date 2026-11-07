@@ -45,21 +45,26 @@ export function ProductImageUploader({
       toast.error(`"${file.name}" is not a valid image file.`);
       return null;
     }
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error(`"${file.name}" exceeds the 3 MB upload limit.`);
+      return null;
+    }
 
     return new Promise<string | null>((resolve) => {
       const reader = new FileReader();
       reader.onload = async () => {
         const base64Data = reader.result as string;
         try {
-          // Upload to backend static storage
           const result = await uploadImage(file.name, base64Data);
           if (result.success && result.url) {
             resolve(result.url);
           } else {
-            resolve(base64Data);
+            toast.error(result.error || `Could not upload "${file.name}".`);
+            resolve(null);
           }
         } catch {
-          resolve(base64Data);
+          toast.error(`Could not upload "${file.name}".`);
+          resolve(null);
         }
       };
       reader.onerror = () => resolve(null);

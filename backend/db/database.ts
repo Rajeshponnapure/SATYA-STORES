@@ -165,6 +165,7 @@ function mapSupabaseAdmin(a: any): AdminProfile {
 }
 
 function ensureDbFile() {
+  if (process.env.VERCEL) throw new Error("Local JSON storage is disabled in production; configure Supabase.");
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
@@ -256,14 +257,19 @@ export async function getDatabase(): Promise<DatabaseSchema> {
         };
 
         // Cache live Supabase snapshot to local JSON
-        ensureDbFile();
-        fs.writeFileSync(dbFilePath, JSON.stringify(liveSchema, null, 2), "utf-8");
+        if (!process.env.VERCEL) {
+          ensureDbFile();
+          fs.writeFileSync(dbFilePath, JSON.stringify(liveSchema, null, 2), "utf-8");
+        }
         return liveSchema;
       }
     } catch (e) {
       console.warn("[Database] Live Supabase query error, using local database cache:", e);
+      if (process.env.VERCEL) throw new Error("Persistent database is unavailable.");
     }
   }
+
+  if (process.env.VERCEL) throw new Error("Supabase credentials are required in production.");
 
   // 2. Synchronized Local JSON Database
   ensureDbFile();
@@ -290,8 +296,10 @@ export async function getDatabase(): Promise<DatabaseSchema> {
 }
 
 export async function saveDatabase(data: DatabaseSchema): Promise<void> {
-  ensureDbFile();
-  fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), "utf-8");
+  if (!process.env.VERCEL) {
+    ensureDbFile();
+    fs.writeFileSync(dbFilePath, JSON.stringify(data, null, 2), "utf-8");
+  }
 
   // Sync mutations to live Supabase Cloud Database
   if (isSupabaseConfigured && supabase) {
@@ -399,5 +407,7 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
       console.warn("[Database] Async sync to Supabase failed:", e);
       throw e;
     }
+  } else if (process.env.VERCEL) {
+    throw new Error("Supabase credentials are required in production.");
   }
 }

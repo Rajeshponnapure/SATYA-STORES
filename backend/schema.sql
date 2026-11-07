@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS homepage_sections (
   status TEXT DEFAULT 'active'
 );
 
--- Enable Row Level Security (RLS) with open read/write for free anon key
+-- Enable RLS and deny direct client access. The API uses a backend-only secret key.
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -204,17 +204,8 @@ ALTER TABLE marquees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE store_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE homepage_sections ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read-write for categories" ON categories FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for products" ON products FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for users" ON users FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for admin_profile" ON admin_profile FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for orders" ON orders FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for inventory_movements" ON inventory_movements FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for reviews" ON reviews FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for coupons" ON coupons FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for marquees" ON marquees FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for store_settings" ON store_settings FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow public read-write for homepage_sections" ON homepage_sections FOR ALL USING (true) WITH CHECK (true);
+REVOKE ALL ON SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON TABLE categories, products, users, admin_profile, orders, inventory_movements, reviews, coupons, marquees, store_settings, homepage_sections FROM anon, authenticated;
 
 -- ==============================================================================
 -- SEED DATA (INITIAL CATEGORIES, PRODUCTS, STORE SETTINGS & USERS)
@@ -279,16 +270,5 @@ INSERT INTO products (id, product_name, slug, sku, brand, category_id, category_
   'prod-noise-colorfit-ultra', 'Noise ColorFit Ultra 3 1.96" AMOLED Smartwatch', 'noise-colorfit-ultra-3-smartwatch', 'SAT-NOI-CFU3-MET', 'Noise', 'cat-accessories', 'Accessories & Smart Gadgets', 'Premium metallic finish smartwatch with Tru Sync Bluetooth Calling, Functional Crown, and 7-day battery stamina.', ARRAY['https://images.unsplash.com/photo-1508746829417-e6f548d8d6ed?auto=format&fit=crop&w=800&q=80', 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80']::text[], 7999, 3299, 19, 0, 5, '{"Display":"1.96\" AMOLED 410x502 resolution Always-On","Connectivity":"Single-chip Bluetooth v5.3 Calling","Health":"24/7 Heart Rate, SpO2, Sleep Tracker, 100+ Sports Modes","WaterResistance":"IP68 Dust & Water Proof"}'::jsonb, '1 Year Brand Replacement Warranty', '[{"sku":"SAT-NOI-CFU3-SIL","name":"Silver Metallic / Jet Black Strap","price":3299,"mrp":7999,"stockQuantity":19,"attributes":{"Color":"Silver Metal / Black Strap"}}]'::jsonb, 'active', 4.5, 88, false, false, true
 ) ON CONFLICT (id) DO NOTHING;
 
--- 5. Users
-INSERT INTO users (id, full_name, email, mobile_number, password, role, mobile_verified, email_verified, account_status, favorites, addresses) VALUES (
-  'usr-admin-1', 'Satya Store Owner', 'admin@sathyastores.com', '+91 98480 22338', 'admin123', 'owner', true, true, 'active', '{}'::text[], '{}'::jsonb
-) ON CONFLICT (id) DO NOTHING;
-INSERT INTO users (id, full_name, email, mobile_number, password, role, mobile_verified, email_verified, account_status, favorites, addresses) VALUES (
-  'usr-cust-1', 'Rajesh Varma', 'rajesh.varma@gmail.com', '+91 98490 12345', 'customer123', 'customer', true, true, 'active', ARRAY['prod-iphone-16-pro', 'prod-macbook-air-m3']::text[], '[{"id":"addr-1","userId":"usr-cust-1","recipientName":"Rajesh Varma","mobileNumber":"+91 98490 12345","addressLine1":"Flat 402, Srinivasa Heights, VIP Road","city":"Vijayawada","state":"Andhra Pradesh","postalCode":"520010","isDefault":true}]'::jsonb
-) ON CONFLICT (id) DO NOTHING;
-INSERT INTO users (id, full_name, email, mobile_number, password, role, mobile_verified, email_verified, account_status, favorites, addresses) VALUES (
-  'usr-cust-2', 'Priya Sharma', 'priya.sharma@yahoo.com', '+91 94401 98765', 'customer123', 'customer', true, true, 'active', ARRAY['prod-lg-oled-55', 'prod-samsung-s25-ultra']::text[], '[{"id":"addr-2","userId":"usr-cust-2","recipientName":"Priya Sharma","mobileNumber":"+91 94401 98765","addressLine1":"Plot 18, Phase 2, Hill View Enclave","city":"Visakhapatnam","state":"Andhra Pradesh","postalCode":"530003","isDefault":true}]'::jsonb
-) ON CONFLICT (id) DO NOTHING;
-INSERT INTO users (id, full_name, email, mobile_number, password, role, mobile_verified, email_verified, account_status, favorites, addresses) VALUES (
-  'usr-cust-3', 'Kiran Kumar', 'kiran.kumar@outlook.com', '+91 97001 12233', 'customer123', 'customer', true, true, 'active', ARRAY['prod-preethi-zodiac']::text[], '[{"id":"addr-3","userId":"usr-cust-3","recipientName":"Kiran Kumar","mobileNumber":"+91 97001 12233","addressLine1":"House #12-4-89, Station Road","city":"Guntur","state":"Andhra Pradesh","postalCode":"522001","isDefault":true}]'::jsonb
-) ON CONFLICT (id) DO NOTHING;
+-- User accounts are intentionally not seeded with shared/demo credentials.
+-- Create an owner account with a private PBKDF2 hash as documented in README.md.

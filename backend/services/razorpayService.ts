@@ -3,8 +3,9 @@ import crypto from "crypto";
 import { getDatabase, saveDatabase } from "../db/database";
 import { Order, RazorpaySettlement } from "../types";
 
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "rzp_test_satyaStore123";
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "satyaStoreSecretKey456";
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || (process.env.NODE_ENV === "production" ? "" : "rzp_test_satyaStore123");
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || (process.env.NODE_ENV === "production" ? "" : "satyaStoreSecretKey456");
+const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "";
 
 // Initialize Razorpay Client
 let razorpayClient: any = null;
@@ -31,6 +32,9 @@ export const razorpayService = {
     currency: string = "INR"
   ): Promise<{ success: boolean; razorpayOrder?: any; keyId?: string; error?: string }> {
     try {
+      if (process.env.NODE_ENV === "production" && (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET)) {
+        return { success: false, error: "Online payments are not configured." };
+      }
       const amountInPaise = Math.round(amount * 100);
 
       // Try creating order via Razorpay API
@@ -87,7 +91,8 @@ export const razorpayService = {
     orderId: string,
     razorpayOrderId: string,
     razorpayPaymentId: string,
-    razorpaySignature: string
+    razorpaySignature: string,
+    verifiedWebhook = false
   ): Promise<{ success: boolean; order?: Order; error?: string }> {
     try {
       if (!razorpayOrderId || !razorpayPaymentId) {
@@ -95,28 +100,22 @@ export const razorpayService = {
       }
 
       // Validate signature
-      let isSignatureValid = false;
+      let isSignatureValid = verifiedWebhook;
       try {
-        const body = razorpayOrderId + "|" + razorpayPaymentId;
-        const expectedSignature = crypto
-          .createHmac("sha256", RAZORPAY_KEY_SECRET)
-          .update(body.toString())
-          .digest("hex");
-
-        if (expectedSignature === razorpaySignature) {
-          isSignatureValid = true;
-        } else if (
-          razorpayOrderId.startsWith("order_test_") ||
-          razorpayPaymentId.startsWith("pay_test_") ||
-          razorpaySignature.startsWith("sig_test_") ||
-          RAZORPAY_KEY_SECRET.includes("satyaStoreSecret")
-        ) {
-          // Allow mock verification in test/dev environment
-          isSignatureValid = true;
+        if (!verifiedWebhook) {
+          const body = razorpayOrderId + "|" + razorpayPaymentId;
+          const expectedSignature = crypto.createHmac("sha256", RAZORPAY_KEY_SECRET).update(body).digest("hex");
+          const expected = Buffer.from(expectedSignature, "hex");
+          const received = Buffer.from(razorpaySignature || "", "hex");
+          isSignatureValid = expected.length === received.length && crypto.timingSafeEqual(expected, received);
+          if (!isSignatureValid && process.env.NODE_ENV !== "production" && (
+            razorpayOrderId.startsWith("order_test_") || razorpayPaymentId.startsWith("pay_test_") ||
+            razorpaySignature.startsWith("sig_test_") || RAZORPAY_KEY_SECRET.includes("satyaStoreSecret")
+          )) isSignatureValid = true;
         }
       } catch (e) {
         // Fallback for mock mode
-        if (razorpayOrderId.startsWith("order_test_")) {
+        if (!verifiedWebhook && process.env.NODE_ENV !== "production" && razorpayOrderId.startsWith("order_test_")) {
           isSignatureValid = true;
         }
       }
@@ -128,9 +127,10 @@ export const razorpayService = {
       const db = await getDatabase();
       const order = db.orders.find((o) => o.id === orderId);
 
-      if (!order) {
+      if (!order || order.razorpayOrderId !== razorpayOrderId) {
         return { success: false, error: "Order not found" };
       }
+      if (order.paymentStatus === "Verified") return { success: true, order };
 
       // Finalize stock deduction & clear reservation
       for (const item of order.itemsSnapshot) {
@@ -194,8 +194,15 @@ export const razorpayService = {
       if (order.paymentStatus !== "Verified" && order.paymentStatus !== "Partially Refunded") {
         return { success: false, error: `Cannot refund order with payment status: ${order.paymentStatus}` };
       }
+      if (process.env.NODE_ENV === "production" && (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET || !order.razorpayPaymentId)) {
+        return { success: false, error: "A live Razorpay payment is required for an automatic refund." };
+      }
 
       const amountToRefund = refundAmount && refundAmount > 0 ? refundAmount : order.totalAmount;
+      const remainingRefundable = order.totalAmount - (order.refundAmount || 0);
+      if (!Number.isFinite(amountToRefund) || amountToRefund <= 0 || amountToRefund > remainingRefundable) {
+        return { success: false, error: "Refund amount is invalid or exceeds the remaining balance." };
+      }
       const amountInPaise = Math.round(amountToRefund * 100);
 
       let refundRecord: any = null;
@@ -222,6 +229,9 @@ export const razorpayService = {
       }
 
       if (!refundRecord) {
+        if (process.env.NODE_ENV === "production") {
+          return { success: false, error: "Razorpay could not confirm the refund. No refund was recorded." };
+        }
         refundRecord = {
           id: `rfnd_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
           entity: "refund",
@@ -319,4 +329,3 @@ export const razorpayService = {
     }
   },
 };
-

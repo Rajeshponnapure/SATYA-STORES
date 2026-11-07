@@ -13,6 +13,11 @@ const passwordResetTokens = new Map<string, PasswordResetToken>();
 let activeAdmin2faOtp: { otp: string; expiresAt: number; provider: string } | null = null;
 
 function isValidProfileImage(value: string): boolean {
+  if (value.startsWith("/uploads/")) return true;
+  try {
+    const url = new URL(value);
+    if (url.protocol === "https:") return true;
+  } catch {}
   const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/i.exec(value);
   if (!match) return false;
   const bytes = Buffer.from(match[2], "base64");
@@ -86,7 +91,7 @@ export const userService = {
     }
 
     // Strip passwords before returning
-    const safeUsers = users.map(({ password, ...rest }) => rest);
+    const safeUsers = users.map(({ password, twoFactorSecret, ...rest }) => rest);
     return { users: safeUsers, total: users.length };
   },
 
@@ -94,7 +99,7 @@ export const userService = {
     const db = await getDatabase();
     const user = (db.users || []).find((u) => u.id === id);
     if (!user) return null;
-    const { password, ...safeUser } = user;
+    const { password, twoFactorSecret, ...safeUser } = user;
     return safeUser;
   },
 
@@ -104,6 +109,12 @@ export const userService = {
     mobileNumber: string;
     password: string;
   }): Promise<{ success: boolean; user?: Omit<User, "password">; error?: string }> {
+    if (typeof data.fullName !== "string" || data.fullName.trim().length < 2 || data.fullName.length > 100 ||
+      typeof data.email !== "string" || data.email.length > 254 ||
+      typeof data.mobileNumber !== "string" || data.mobileNumber.length < 7 || data.mobileNumber.length > 24 ||
+      typeof data.password !== "string" || data.password.length < 12 || data.password.length > 200) {
+      return { success: false, error: "Account details or password do not meet requirements." };
+    }
     const db = await getDatabase();
     const emailClean = data.email.trim().toLowerCase();
     const mobileClean = data.mobileNumber.trim();
@@ -134,7 +145,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, ...safeUser } = newUser;
+    const { password, twoFactorSecret, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -181,7 +192,7 @@ export const userService = {
       };
     }
 
-    const { password, ...safeUser } = user;
+    const { password, twoFactorSecret, ...safeUser } = user;
     return {
       success: true,
       user: safeUser,
@@ -193,13 +204,16 @@ export const userService = {
     userId: string,
     newPassword: string
   ): Promise<{ success: boolean; error?: string }> {
+    if (typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 200) {
+      return { success: false, error: "Password must be between 12 and 200 characters." };
+    }
     const db = await getDatabase();
     const idx = (db.users || []).findIndex((u) => u.id === userId);
     if (idx === -1) {
       return { success: false, error: "User not found." };
     }
 
-    // Save with salt:hash
+    // Save a versioned PBKDF2 hash.
     db.users[idx].password = hashPassword(newPassword);
     await saveDatabase(db);
     return { success: true };
@@ -228,7 +242,11 @@ export const userService = {
       return { success: false, error: "A user with this email or mobile number already exists." };
     }
 
-    const rawPassword = userData.password && userData.password.length >= 6 ? userData.password : "SatyaStores@123";
+    if (typeof userData.password !== "string" || userData.password.length < 12 || userData.password.length > 200 ||
+      !["customer", "admin"].includes(userData.role || "customer")) {
+      return { success: false, error: "Provide a password of at least 12 characters and a valid user role." };
+    }
+    const rawPassword = userData.password;
     const newUser: User = {
       id: `usr-${Date.now()}`,
       fullName: userData.fullName.trim(),
@@ -247,7 +265,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, ...safeUser } = newUser;
+    const { password, twoFactorSecret, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -300,7 +318,7 @@ export const userService = {
     }
 
     await saveDatabase(db);
-    const { password, ...safeUser } = current;
+    const { password, twoFactorSecret, ...safeUser } = current;
     return { success: true, user: safeUser };
   },
 
@@ -334,7 +352,7 @@ export const userService = {
 
     db.users[idx] = { ...db.users[idx], ...updates };
     await saveDatabase(db);
-    const { password, ...safeUser } = db.users[idx];
+    const { password, twoFactorSecret, ...safeUser } = db.users[idx];
     return { success: true, user: safeUser };
   },
 
@@ -439,6 +457,7 @@ export const userService = {
     // Mask security PIN for safe viewing
     return {
       ...db.adminProfile,
+      twoFactorSecret: undefined,
       twoFactorPin: db.adminProfile.twoFactorPin ? "******" : undefined,
     };
   },
@@ -467,7 +486,7 @@ export const userService = {
     }
 
     await saveDatabase(db);
-    return { success: true, profile: db.adminProfile };
+    return { success: true, profile: { ...db.adminProfile, twoFactorSecret: undefined, twoFactorPin: undefined } };
   },
 
   async getAdmin2faSetup(): Promise<{
@@ -480,7 +499,26 @@ export const userService = {
   }> {
     const db = await getDatabase();
     const adminUser = (db.users || []).find((u) => u.role === "owner");
-    const secret = adminUser?.twoFactorSecret || "JBSWY3DPEHPK3PXP";
+    if (!adminUser) throw new Error("Administrative account is not configured.");
+    if (!adminUser.twoFactorSecret) {
+      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+      const bytes = crypto.randomBytes(20);
+      let bits = 0;
+      let value = 0;
+      let secret = "";
+      for (const byte of bytes) {
+        value = (value << 8) | byte;
+        bits += 8;
+        while (bits >= 5) {
+          secret += alphabet[(value >>> (bits - 5)) & 31];
+          bits -= 5;
+        }
+      }
+      if (bits > 0) secret += alphabet[(value << (5 - bits)) & 31];
+      adminUser.twoFactorSecret = secret;
+      await saveDatabase(db);
+    }
+    const secret = adminUser.twoFactorSecret;
     const account = adminUser?.email || "admin@sathyastores.com";
     const issuer = "Satya Stores";
     const otpauthUri = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
@@ -496,25 +534,15 @@ export const userService = {
   },
 
   async generateAdmin2fa(): Promise<{ success: boolean; otp: string; message: string; provider: string }> {
-    const otp = generateOtp();
-    activeAdmin2faOtp = {
-      otp,
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-      provider: "External SMS/Email Dispatch Provider",
-    };
-
-    return {
-      success: true,
-      otp,
-      provider: "External Authenticator & SMS/Email Gateway",
-      message: `External 2FA Security Code dispatched: ${otp}. Valid for 10 minutes. Also accepts live code from your Google/Microsoft Authenticator app.`,
-    };
+    activeAdmin2faOtp = null;
+    return { success: false, otp: "", provider: "Unavailable", message: "OTP delivery is not configured. Use an authenticator app instead." };
   },
 
   async verifyAdmin2faCode(code: string): Promise<{ success: boolean; valid: boolean; method?: string; error?: string }> {
     const db = await getDatabase();
     const adminUser = (db.users || []).find((u) => u.role === "owner");
-    const secret = adminUser?.twoFactorSecret || "JBSWY3DPEHPK3PXP";
+    const secret = adminUser?.twoFactorSecret;
+    if (!secret) return { success: false, valid: false, error: "Set up an authenticator app first." };
     const cleanCode = code.trim();
 
     // 1. Check RFC 6238 TOTP from external authenticator app
@@ -559,7 +587,8 @@ export const userService = {
 
     // 2. Verify 2FA code: First via RFC 6238 External Authenticator TOTP, then external OTP
     const cleanCode = twoFactorCode.trim();
-    const secret = adminUser.twoFactorSecret || "JBSWY3DPEHPK3PXP";
+    const secret = adminUser.twoFactorSecret;
+    if (!secret) return { success: false, error: "Set up an authenticator app first." };
 
     const isTotpValid = verifyTOTP(cleanCode, secret);
     const isOtpValid =

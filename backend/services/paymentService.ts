@@ -7,8 +7,11 @@ export const paymentService = {
     utr: string,
     evidenceUrl?: string
   ): Promise<{ success: boolean; order?: Order; error?: string }> {
-    if (!utr || utr.trim().length < 6) {
+    if (typeof utr !== "string" || !/^[A-Za-z0-9-]{6,32}$/.test(utr.trim())) {
       return { success: false, error: "Valid 12-digit UTR reference is required" };
+    }
+    if (evidenceUrl !== undefined && (typeof evidenceUrl !== "string" || evidenceUrl.length > 2048 || !/^https:\/\//i.test(evidenceUrl))) {
+      return { success: false, error: "Payment evidence must be a secure HTTPS URL." };
     }
 
     const db = await getDatabase();
@@ -16,6 +19,9 @@ export const paymentService = {
 
     if (!order) {
       return { success: false, error: "Order not found" };
+    }
+    if (!["Awaiting Payment", "Rejected", "Payment Details Submitted", "Verification Pending"].includes(order.paymentStatus)) {
+      return { success: false, error: "This order is not accepting payment details." };
     }
 
     order.paymentReference = utr.trim();
@@ -150,4 +156,3 @@ export const paymentService = {
       }));
   },
 };
-

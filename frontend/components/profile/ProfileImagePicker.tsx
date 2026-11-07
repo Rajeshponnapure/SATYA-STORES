@@ -22,8 +22,8 @@ export function ProfileImagePicker({ image, name, onUpload }: ProfileImagePicker
       toast.error("Choose a JPG, PNG, or WebP image.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Profile images must be 5 MB or smaller.");
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error("Profile images must be 3 MB or smaller.");
       return;
     }
 
@@ -58,7 +58,7 @@ export function ProfileImagePicker({ image, name, onUpload }: ProfileImagePicker
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-slate-900">Profile photo</p>
-        <p className="mt-0.5 text-xs text-slate-500">JPG, PNG, or WebP · up to 5 MB</p>
+        <p className="mt-0.5 text-xs text-slate-500">JPG, PNG, or WebP · up to 3 MB</p>
         <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()} className="mt-2 inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-60">
           <Camera className="h-4 w-4" />{uploading ? "Uploading…" : "Choose photo"}
         </button>
