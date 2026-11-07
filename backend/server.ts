@@ -152,7 +152,7 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
     if (!setAdminSession(res)) {
       return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
     }
-    res.json({ success: true });
+    res.json({ success: true, user: result.user, isAdmin: true });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }

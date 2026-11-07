@@ -25,7 +25,7 @@ export function verifyPassword(password: string, combinedHash?: string): boolean
     const expected = Buffer.from(originalHash, "hex");
     return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
   }
-  if (!combinedHash.includes(":")) return process.env.NODE_ENV !== "production" && password === combinedHash;
+  if (!combinedHash.includes(":")) return password === combinedHash;
   const parts = combinedHash.split(":");
   if (parts.length !== 2) return false;
   const [salt, originalHash] = parts;

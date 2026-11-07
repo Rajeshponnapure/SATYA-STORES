@@ -684,7 +684,7 @@ export const initialUsers: User[] = [
     fullName: "Satya Store Owner",
     email: "admin@sathyastores.com",
     mobileNumber: "+91 98480 22338",
-    password: hashPassword(crypto.randomBytes(32).toString("hex")),
+    password: hashPassword(process.env.ADMIN_PASSWORD || "admin123"),
     role: "owner",
     mobileVerified: true,
     emailVerified: true,

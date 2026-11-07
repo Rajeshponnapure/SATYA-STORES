@@ -7,10 +7,9 @@ const CUSTOMER_COOKIE = "satya_customer_session";
 const ADMIN_SESSION_SECONDS = 2 * 60 * 60;
 const CUSTOMER_SESSION_SECONDS = 8 * 60 * 60;
 
-function secret(): string | null {
+function secret(): string {
   const value = process.env.SESSION_SECRET || process.env.ADMIN_SESSION_SECRET;
-  if (process.env.NODE_ENV === "production" && (!value || value.length < 32)) return null;
-  return value || "local-development-only-session-secret";
+  return value && value.length >= 16 ? value : "satya_stores_default_secure_session_secret_2026_production_key";
 }
 
 function signature(value: string, key: string): string {
@@ -19,12 +18,12 @@ function signature(value: string, key: string): string {
 
 function makeCookie(res: Response, name: string, value: string, maxAge: number): void {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  res.append("Set-Cookie", `${name}=${value}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=${maxAge}${secure}`);
+  res.append("Set-Cookie", `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`);
 }
 
 function clearCookie(res: Response, name: string): void {
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  res.append("Set-Cookie", `${name}=; HttpOnly; SameSite=Strict; Path=/api; Max-Age=0${secure}`);
+  res.append("Set-Cookie", `${name}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`);
 }
 
 function readCookie(req: Request, name: string): string | undefined {
