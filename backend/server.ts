@@ -13,7 +13,12 @@ import { userService } from "./services/userService";
 import { cmsService } from "./services/cmsService";
 import { getDatabase, saveDatabase } from "./db/database";
 import { initialPromotions } from "./db/initialData";
-import { put } from "@vercel/blob";
+// Optional Vercel Blob storage for production media uploads
+let putBlob: any = null;
+try {
+  const vb = require("@vercel/blob");
+  putBlob = vb.put || vb.default?.put;
+} catch (e) {}
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import {
@@ -336,9 +341,9 @@ app.post("/api/upload", async (req: Request, res: Response) => {
     const uniqueName = `upload_${Date.now()}_${cleanBase}.${ext}`;
     let relativeUrl = `/uploads/${uniqueName}`;
 
-    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
+    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN && putBlob) {
       try {
-        const blob = await put(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
+        const blob = await putBlob(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
         relativeUrl = blob.url;
       } catch (blobErr) {
         console.warn("[Upload] Vercel blob put warning, using inline data URI:", blobErr);

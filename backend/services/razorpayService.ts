@@ -1,7 +1,14 @@
-import Razorpay from "razorpay";
 import crypto from "crypto";
 import { getDatabase, saveDatabase } from "../db/database";
 import { Order, RazorpaySettlement } from "../types";
+
+let RazorpayClass: any = null;
+try {
+  const rz = require("razorpay");
+  RazorpayClass = rz.default || rz;
+} catch (e) {
+  // Razorpay module not present in this environment
+}
 
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || (process.env.NODE_ENV === "production" ? "" : "rzp_test_satyaStore123");
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || (process.env.NODE_ENV === "production" ? "" : "satyaStoreSecretKey456");
@@ -9,13 +16,15 @@ const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "";
 
 // Initialize Razorpay Client
 let razorpayClient: any = null;
-try {
-  razorpayClient = new Razorpay({
-    key_id: RAZORPAY_KEY_ID,
-    key_secret: RAZORPAY_KEY_SECRET,
-  });
-} catch (err) {
-  console.warn("Razorpay client initialization warning:", err);
+if (RazorpayClass) {
+  try {
+    razorpayClient = new RazorpayClass({
+      key_id: RAZORPAY_KEY_ID,
+      key_secret: RAZORPAY_KEY_SECRET,
+    });
+  } catch (err) {
+    console.warn("Razorpay client initialization warning:", err);
+  }
 }
 
 export const razorpayService = {

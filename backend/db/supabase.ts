@@ -1,4 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
+// Safe dynamic require of @supabase/supabase-js to prevent module resolution crashes
+let createClient: any = null;
+try {
+  const mod = require("@supabase/supabase-js");
+  createClient = mod.createClient || mod.default?.createClient;
+} catch {
+  // @supabase/supabase-js is not installed or unavailable in this runtime
+}
 
 const supabaseUrl =
   process.env.SUPABASE_URL ||
@@ -14,13 +21,14 @@ const supabaseSecretKey =
   "";
 
 export const isSupabaseConfigured = Boolean(
+  createClient &&
   supabaseUrl &&
   supabaseSecretKey &&
   supabaseUrl.startsWith("https://") &&
   !supabaseUrl.includes("your-project")
 );
 
-export const supabase = isSupabaseConfigured
+export const supabase: any = isSupabaseConfigured && createClient
   ? createClient(supabaseUrl, supabaseSecretKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
