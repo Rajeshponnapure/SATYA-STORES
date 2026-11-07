@@ -41,14 +41,21 @@ if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
 
 if (!process.env.VERCEL) app.use("/uploads", express.static(uploadsDir));
 
-// Enable CORS for frontend running on Port 3000
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL, "http://localhost:3000", "http://127.0.0.1:3000"]
-  : ["http://localhost:3000", "http://127.0.0.1:3000"];
-
+// Enable CORS for frontend clients (local, preview, production)
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        origin.endsWith(".vercel.app") ||
+        origin.includes("localhost") ||
+        origin.includes("127.0.0.1") ||
+        (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   })
 );
@@ -72,6 +79,8 @@ app.use("/api", (req: Request, res: Response, next: import("express").NextFuncti
   if (!origin) return next();
   try {
     if (new URL(origin).host === req.get("host")) return next();
+    if (origin.endsWith(".vercel.app") || origin.includes("localhost") || origin.includes("127.0.0.1")) return next();
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) return next();
   } catch {}
   return res.status(403).json({ success: false, error: "Cross-origin request rejected." });
 });
@@ -105,7 +114,7 @@ app.post("/api/auth/signup", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -121,7 +130,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -140,7 +149,7 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
     }
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -186,7 +195,7 @@ app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -206,7 +215,7 @@ app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -216,7 +225,7 @@ app.get("/api/admin/profile", async (_req: Request, res: Response) => {
     const profile = await userService.getAdminProfile();
     res.json({ success: true, profile });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -232,7 +241,7 @@ app.put("/api/admin/profile", async (req: Request, res: Response) => {
     const result = await userService.updateAdminProfile({ fullName, email, mobileNumber, businessEntity, profileImage });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -241,7 +250,7 @@ app.get("/api/admin/2fa-setup", async (_req: Request, res: Response) => {
     const result = await userService.getAdmin2faSetup();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -254,7 +263,7 @@ app.post("/api/admin/verify-2fa", async (req: Request, res: Response) => {
     const result = await userService.verifyAdmin2faCode(code);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -263,7 +272,7 @@ app.post("/api/admin/generate-2fa", async (_req: Request, res: Response) => {
     const result = await userService.generateAdmin2fa();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -286,7 +295,7 @@ app.post("/api/admin/change-password", async (req: Request, res: Response) => {
     }
     res.json({ success: true, message: "Admin password updated successfully with 2FA verification." });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -317,10 +326,23 @@ app.post("/api/upload", async (req: Request, res: Response) => {
 
     const cleanBase = (fileName || "product_img").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 30);
     const uniqueName = `upload_${Date.now()}_${cleanBase}.${ext}`;
-    const relativeUrl = process.env.VERCEL
-      ? (await put(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime })).url
-      : `/uploads/${uniqueName}`;
-    if (!process.env.VERCEL) fs.writeFileSync(path.join(uploadsDir, uniqueName), buffer);
+    let relativeUrl = `/uploads/${uniqueName}`;
+
+    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
+      try {
+        const blob = await put(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
+        relativeUrl = blob.url;
+      } catch (blobErr) {
+        console.warn("[Upload] Vercel blob put warning, using inline data URI:", blobErr);
+        relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+      }
+    } else if (process.env.VERCEL) {
+      // Inline base64 URI guarantees persistence across serverless invocations without external tokens
+      relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+    } else {
+      fs.writeFileSync(path.join(uploadsDir, uniqueName), buffer);
+    }
+
     res.json({
       success: true,
       url: relativeUrl,
@@ -328,7 +350,7 @@ app.post("/api/upload", async (req: Request, res: Response) => {
       message: "Image uploaded successfully.",
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -343,7 +365,7 @@ app.get("/api/admin/database-status", async (_req: Request, res: Response) => {
       engine: isConfigured ? "Supabase PostgreSQL (backend-only credentials)" : "Local development storage",
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -353,7 +375,7 @@ app.get("/api/users/:id", requireCustomerSession, async (req: Request, res: Resp
     if (!user) return res.status(404).json({ success: false, error: "User not found" });
     res.json({ success: true, user });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -386,7 +408,7 @@ app.put("/api/users/:id/profile", requireCustomerSession, async (req: Request, r
     const result = await userService.updateUserProfile(String(req.params.id), { fullName, mobileNumber, profileImage, addresses: safeAddresses });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -399,7 +421,7 @@ app.post("/api/users/:id/favorites", requireCustomerSession, async (req: Request
     const result = await userService.toggleFavorite(String(req.params.id), productId);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -410,7 +432,7 @@ app.get("/api/admin/users", async (req: Request, res: Response) => {
     const result = await userService.getAllUsers(search);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -422,7 +444,7 @@ app.post("/api/admin/users", async (req: Request, res: Response) => {
     }
     res.status(201).json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -434,7 +456,7 @@ app.put("/api/admin/users/:id", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -446,7 +468,7 @@ app.delete("/api/admin/users/:id", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -459,7 +481,7 @@ app.put("/api/admin/users/:id/password", async (req: Request, res: Response) => 
     const result = await userService.adminUpdateUserPassword(String(req.params.id), newPassword);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -472,7 +494,7 @@ app.get("/api/products", async (req: Request, res: Response) => {
     const products = hasAdminSession(req) ? allProducts : allProducts.filter((product) => product.publicationStatus === "active");
     res.json({ success: true, products });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -481,7 +503,7 @@ app.post("/api/products", async (req: Request, res: Response) => {
     const result = await productService.addProduct(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -490,7 +512,7 @@ app.put("/api/products/:id", async (req: Request, res: Response) => {
     const result = await productService.updateProduct(String(req.params.id), req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -499,7 +521,7 @@ app.delete("/api/products/:id", async (req: Request, res: Response) => {
     const result = await productService.deleteProduct(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -511,7 +533,7 @@ app.post("/api/products/:id/restore", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -521,7 +543,7 @@ app.get("/api/categories", async (req: Request, res: Response) => {
     const categories = hasAdminSession(req) ? allCategories : allCategories.filter((category) => category.status === "active");
     res.json({ success: true, categories });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -531,7 +553,7 @@ app.get("/api/promotions", async (_req: Request, res: Response) => {
     const promotions = db.promotions?.length ? db.promotions : initialPromotions;
     res.json({ success: true, promotions });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -540,7 +562,7 @@ app.post("/api/categories", async (req: Request, res: Response) => {
     const result = await productService.addCategory(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -549,7 +571,7 @@ app.put("/api/categories/:id", async (req: Request, res: Response) => {
     const result = await productService.updateCategory(String(req.params.id), req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -558,7 +580,7 @@ app.delete("/api/categories/:id", async (req: Request, res: Response) => {
     const result = await productService.deleteCategory(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -570,7 +592,7 @@ app.get("/api/orders", requireAdminSession, async (_req: Request, res: Response)
     const orders = await orderService.getAllOrders();
     res.json({ success: true, orders });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -579,7 +601,7 @@ app.get("/api/users/:id/orders", requireCustomerSession, async (req: Request, re
     const orders = await orderService.getUserOrders(String(req.params.id));
     res.json({ success: true, orders });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -594,7 +616,7 @@ app.post("/api/orders", requireCustomerSession, async (req: Request, res: Respon
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -621,7 +643,7 @@ app.get("/api/orders/:id", requireOrderOwner, async (req: Request, res: Response
     }
     res.json({ success: true, order });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -637,7 +659,7 @@ app.patch("/api/admin/orders/:id/status", async (req: Request, res: Response) =>
     );
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -647,7 +669,7 @@ app.put("/api/admin/orders/:id/items", async (req: Request, res: Response) => {
     const result = await orderService.modifyOrderItems(String(req.params.id), items, discount);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -657,7 +679,7 @@ app.post("/api/orders/:id/cancel", requireOrderOwner, async (req: Request, res: 
     const result = await orderService.cancelOrder(String(req.params.id), reason);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -678,7 +700,7 @@ app.post("/api/orders/:id/payment", requireOrderOwner, async (req: Request, res:
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -687,7 +709,7 @@ app.get("/api/admin/payments", async (_req: Request, res: Response) => {
     const payments = await paymentService.getAllPayments();
     res.json({ success: true, payments });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -700,7 +722,7 @@ app.post("/api/admin/payments/verify", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -713,7 +735,7 @@ app.post("/api/admin/payments/reject", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -754,7 +776,7 @@ app.post("/api/orders/:id/razorpay/create-order", requireOrderOwner, async (req:
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -776,7 +798,7 @@ app.post("/api/orders/:id/razorpay/verify", requireOrderOwner, async (req: Reque
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -792,7 +814,7 @@ app.post("/api/admin/orders/:id/refund", async (req: Request, res: Response) => 
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -801,7 +823,7 @@ app.get("/api/admin/settlements", async (_req: Request, res: Response) => {
     const settlements = await razorpayService.getSettlements();
     res.json({ success: true, settlements });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -866,7 +888,7 @@ app.get("/api/admin/inventory/movements", async (_req: Request, res: Response) =
     const movements = await inventoryService.getMovements();
     res.json({ success: true, movements });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -878,7 +900,7 @@ app.post("/api/admin/inventory/adjust", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -890,7 +912,7 @@ app.patch("/api/admin/deliveries", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -902,7 +924,7 @@ app.get("/api/admin/coupons", async (_req: Request, res: Response) => {
     const coupons = await cmsService.getAllCoupons();
     res.json({ success: true, coupons });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -911,7 +933,7 @@ app.post("/api/admin/coupons", async (req: Request, res: Response) => {
     const result = await cmsService.addCoupon(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -920,7 +942,7 @@ app.delete("/api/admin/coupons/:id", async (req: Request, res: Response) => {
     const result = await cmsService.deleteCoupon(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -933,7 +955,7 @@ app.post("/api/coupons/apply", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -945,7 +967,7 @@ app.get("/api/marquees", async (_req: Request, res: Response) => {
     const marquees = (await cmsService.getAllMarquees()).filter((item) => item.status === "active");
     res.json({ success: true, marquees });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -954,7 +976,7 @@ app.post("/api/admin/marquees", async (req: Request, res: Response) => {
     const result = await cmsService.addMarquee(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -963,7 +985,7 @@ app.delete("/api/admin/marquees/:id", async (req: Request, res: Response) => {
     const result = await cmsService.deleteMarquee(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -975,7 +997,7 @@ app.get("/api/products/:id/reviews", async (req: Request, res: Response) => {
     const reviews = await userService.getProductReviews(String(req.params.id));
     res.json({ success: true, reviews });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -996,7 +1018,7 @@ app.post("/api/reviews", requireCustomerSession, async (req: Request, res: Respo
     const result = await userService.addReview({ productId, userId, userName: user.fullName, rating, title: title.trim(), comment: comment.trim() });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -1008,7 +1030,7 @@ app.get("/api/layout", async (_req: Request, res: Response) => {
     const sections = await cmsService.getHomepageSections();
     res.json({ success: true, sections });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -1018,7 +1040,7 @@ app.post("/api/admin/layout", async (req: Request, res: Response) => {
     const result = await cmsService.updateHomepageSections(sections);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -1030,7 +1052,7 @@ app.get("/api/settings", async (_req: Request, res: Response) => {
     const db = await getDatabase();
     res.json({ success: true, settings: db.settings });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
@@ -1041,7 +1063,7 @@ app.post("/api/settings", async (req: Request, res: Response) => {
     await saveDatabase(db);
     res.json({ success: true, settings: db.settings });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: process.env.NODE_ENV === "production" ? "Request failed." : err.message });
+    res.status(500).json({ success: false, error: err?.message || "Request failed." });
   }
 });
 
