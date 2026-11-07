@@ -95,8 +95,9 @@ export default function ProductDetailPage() {
     if (!reviewTitle.trim() || !reviewComment.trim()) return;
 
     setIsSubmittingReview(true);
-    await submitReview(product.id, newRating, reviewTitle, reviewComment);
+    const success = await submitReview(product.id, newRating, reviewTitle, reviewComment);
     setIsSubmittingReview(false);
+    if (!success) return;
     setShowReviewForm(false);
     setReviewTitle("");
     setReviewComment("");

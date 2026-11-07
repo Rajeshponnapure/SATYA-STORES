@@ -161,7 +161,7 @@ export default function CheckoutPage() {
     const success = await submitPaymentDetails(
       createdOrderId,
       utrNumber,
-      screenshotUrl || "https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=600&q=80"
+      screenshotUrl
     );
 
     if (success) {

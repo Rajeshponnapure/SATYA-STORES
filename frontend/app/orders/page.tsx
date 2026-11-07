@@ -236,11 +236,11 @@ export default function OrdersPage() {
                 </div>
                 <div className="text-xs text-slate-700 min-w-0 flex-1">
                   <span className="font-bold block truncate max-w-sm">
-                    {ord.itemsSnapshot[0].productName}
+                    {ord.itemsSnapshot[0]?.productName || "Item details unavailable"}
                     {ord.itemsSnapshot.length > 1 && ` + ${ord.itemsSnapshot.length - 1} more`}
                   </span>
                   <span className="text-[11px] text-slate-400 block truncate">
-                    Ship to: {ord.customerName} ({ord.shippingAddressSnapshot.city})
+                    Ship to: {ord.customerName} ({ord.shippingAddressSnapshot?.city || "—"})
                   </span>
                   <span className="text-[10px] text-blue-600 font-mono block">
                     {ord.paymentMethod === "RAZORPAY"

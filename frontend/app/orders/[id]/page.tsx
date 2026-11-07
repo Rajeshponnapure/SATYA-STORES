@@ -373,7 +373,7 @@ export default function OrderDetailsPage() {
           <Phone className="h-4 w-4" /> Call Store Support
         </a>
         <a
-          href={`https://wa.me/91${(settings?.supportPhone || "9849012345").replace(/[^0-9]/g, "")}`}
+          href={`https://wa.me/${(settings?.supportPhone || "+919849012345").replace(/[^0-9]/g, "").replace(/^91(?=\d{10}$)/, "")}`}
           target="_blank"
           rel="noreferrer"
           className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95"

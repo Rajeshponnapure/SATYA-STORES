@@ -115,12 +115,12 @@ export default function AccountPage() {
       toast.error("Please enter your name.");
       return;
     }
-    await updateProfile({
+    const success = await updateProfile({
       fullName: profileName.trim(),
       mobileNumber: profileMobile.trim(),
     });
     setIsEditingProfile(false);
-    toast.success("Profile updated successfully!");
+    if (success) toast.success("Profile updated successfully!");
   };
 
   const handleOpenAddAddress = () => {
@@ -164,11 +164,11 @@ export default function AccountPage() {
       updatedAddresses.push(newAddr);
     }
 
-    await updateProfile({
+    const success = await updateProfile({
       addresses: updatedAddresses,
     });
     setIsEditingAddress(false);
-    toast.success("Address saved successfully!");
+    if (success) toast.success("Address saved successfully!");
   };
 
   const handleSetDefaultAddress = async (addrId: string) => {
@@ -177,8 +177,8 @@ export default function AccountPage() {
       ...a,
       isDefault: a.id === addrId,
     }));
-    await updateProfile({ addresses: updated });
-    toast.success("Primary address updated!");
+    const success = await updateProfile({ addresses: updated });
+    if (success) toast.success("Primary address updated!");
   };
 
   const getPaymentStatusBadge = (status: string) => {
@@ -537,7 +537,7 @@ export default function AccountPage() {
               </a>
 
               <a
-                href={`https://wa.me/91${(settings?.supportPhone || "9849012345").replace(/[^0-9]/g, "")}`}
+                href={`https://wa.me/${(settings?.supportPhone || "+91 98490 12345").replace(/[^0-9]/g, "").replace(/^91(?=\d{10}$)/, "")}`}
                 target="_blank"
                 rel="noreferrer"
                 className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200/80 hover:bg-emerald-100 flex items-center gap-2.5 transition-colors"

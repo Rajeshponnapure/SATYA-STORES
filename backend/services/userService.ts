@@ -184,10 +184,9 @@ export const userService = {
     }
 
     const isOwner = user.role === "owner";
-    const configuredAdminPass = process.env.ADMIN_PASSWORD || "admin123";
-    const isMatch =
-      (isOwner && (passwordAttempt === configuredAdminPass || passwordAttempt === "admin123")) ||
-      verifyPassword(passwordAttempt, user.password);
+    const configuredAdminPass = process.env.ADMIN_PASSWORD;
+    const usesEnvPassword = isOwner && configuredAdminPass && passwordAttempt === configuredAdminPass;
+    const isMatch = usesEnvPassword || verifyPassword(passwordAttempt, user.password);
 
     if (!isMatch) {
       return {

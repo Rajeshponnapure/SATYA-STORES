@@ -145,7 +145,7 @@ interface StoreContextType {
   deleteCategory: (id: string) => Promise<boolean>;
   verifyPayment: (orderId: string) => Promise<boolean>;
   rejectPayment: (orderId: string, reason: string) => Promise<boolean>;
-  updateOrderStatus: (orderId: string, status: OrderStatus, deliveryStatus?: DeliveryStatus, manualRef?: string, notes?: string) => Promise<boolean>;
+  updateOrderStatus: (orderId: string, status?: OrderStatus, deliveryStatus?: DeliveryStatus, manualRef?: string, notes?: string) => Promise<boolean>;
   updateDeliveryStatus: (orderId: string, status: DeliveryStatus, manualReference?: string, notes?: string) => Promise<boolean>;
   adjustStock: (productId: string, newQuantity: number, reason: string) => Promise<void>;
   updateSettings: (newSettings: Partial<StoreSettings>) => Promise<void>;
@@ -181,36 +181,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Load local session on mount
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem("satya_customer_user");
-      if (storedUser) {
-        const u = JSON.parse(storedUser);
-        setCurrentUser(u);
-        if (u.favorites) setFavorites(u.favorites);
-      }
+    (async () => {
+      try {
+        const storedFavs = localStorage.getItem("satya_favorites");
+        if (storedFavs) {
+          setFavorites(JSON.parse(storedFavs));
+        }
 
-      const storedAdmin = localStorage.getItem("satya_admin_auth");
-      if (storedAdmin === "true") {
-        fetch("/api/admin/profile")
-          .then((res) => {
-            if (res.ok) setIsAdminAuthenticated(true);
-            else localStorage.removeItem("satya_admin_auth");
-          })
-          .catch(() => localStorage.removeItem("satya_admin_auth"));
-      }
+        const storedUser = localStorage.getItem("satya_customer_user");
+        if (storedUser && storedUser !== "undefined") {
+          try {
+            const u = JSON.parse(storedUser);
+            // Session cookie is HttpOnly; verify it's still valid before trusting the cached profile
+            const res = await fetch(`/api/users/${u.id}`);
+            if (res.ok) {
+              const data = await res.json();
+              setCurrentUser(data.user);
+              if (data.user?.favorites) setFavorites(data.user.favorites);
+            } else {
+              localStorage.removeItem("satya_customer_user");
+            }
+          } catch {
+            localStorage.removeItem("satya_customer_user");
+          }
+        }
 
-      const storedCart = localStorage.getItem("satya_cart");
-      if (storedCart) {
-        setCart(JSON.parse(storedCart));
-      }
+        const storedAdmin = localStorage.getItem("satya_admin_auth");
+        if (storedAdmin === "true") {
+          fetch("/api/admin/profile")
+            .then((res) => {
+              if (res.ok) setIsAdminAuthenticated(true);
+              else localStorage.removeItem("satya_admin_auth");
+            })
+            .catch(() => localStorage.removeItem("satya_admin_auth"));
+        }
 
-      const storedFavs = localStorage.getItem("satya_favorites");
-      if (storedFavs) {
-        setFavorites(JSON.parse(storedFavs));
+        const storedCart = localStorage.getItem("satya_cart");
+        if (storedCart) {
+          setCart(JSON.parse(storedCart));
+        }
+      } catch (e) {
+        console.warn("Could not read local storage session:", e);
       }
-    } catch (e) {
-      console.warn("Could not read local storage session:", e);
-    }
+    })();
   }, []);
 
   // Save cart to local storage
@@ -655,7 +668,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchSettlements = async (): Promise<RazorpaySettlement[]> => {
+  const fetchSettlements = useCallback(async (): Promise<RazorpaySettlement[]> => {
     try {
       const res = await fetch("/api/admin/settlements");
       const data = await res.json();
@@ -666,7 +679,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       return [];
     }
-  };
+  }, []);
 
   // ==========================================
   // CUSTOMER AUTH
@@ -885,7 +898,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchAdminUsers = async (search?: string) => {
+  const fetchAdminUsers = useCallback(async (search?: string) => {
     try {
       const url = search ? `/api/admin/users?search=${encodeURIComponent(search)}` : "/api/admin/users";
       const res = await fetch(url);
@@ -894,7 +907,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setAdminUsers(data.users);
       }
     } catch {}
-  };
+  }, []);
 
   const adminUpdateUserPassword = async (userId: string, newPass: string): Promise<boolean> => {
     try {
@@ -995,7 +1008,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchAdmin2faSetup = async (): Promise<{
+  const fetchAdmin2faSetup = useCallback(async (): Promise<{
     success: boolean;
     secret: string;
     otpauthUri: string;
@@ -1009,7 +1022,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     } catch {}
     return null;
-  };
+  }, []);
 
   const verifyAdmin2faCode = async (code: string): Promise<{
     success: boolean;
@@ -1151,10 +1164,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toast.success(`Product "${productData.productName}" added!`);
       return true;
     } catch {
-      const newProd = { ...productData, id: `prod-${Date.now()}` } as Product;
-      setProducts((prev) => [newProd, ...prev]);
-      toast.success(`Product added locally!`);
-      return true;
+      toast.error("Network error adding product. Please try again.");
+      return false;
     }
   };
 
@@ -1186,9 +1197,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       await refreshBackendData();
       return true;
     } catch {
-      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-      toast.success("Product updated locally!");
-      return true;
+      toast.error("Network error updating product. Please try again.");
+      return false;
     }
   };
 
@@ -1203,8 +1213,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setProducts((prev) => prev.filter((p) => p.id !== id));
       return true;
     } catch {
-      setProducts((prev) => prev.filter((p) => p.id !== id));
-      return true;
+      toast.error("Network error deleting product. Please try again.");
+      return false;
     }
   };
 
@@ -1245,21 +1255,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         await refreshBackendData();
         return true;
       }
-    } catch {}
-    const newCat = { ...categoryData, id: `cat-${Date.now()}` } as Category;
-    setCategories((prev) => [...prev, newCat]);
-    toast.success(`Category created locally!`);
-    return true;
+      toast.error(data.error || "Failed to create category.");
+      return false;
+    } catch {
+      toast.error("Network error creating category. Please try again.");
+      return false;
+    }
   };
 
   const deleteCategory = async (id: string): Promise<boolean> => {
     try {
-      await fetch(`/api/categories/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to delete category.");
+        return false;
+      }
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      toast.info("Category deleted");
       await refreshBackendData();
-    } catch {}
-    setCategories((prev) => prev.filter((c) => c.id !== id));
-    toast.info("Category deleted");
-    return true;
+      return true;
+    } catch {
+      toast.error("Network error deleting category. Please try again.");
+      return false;
+    }
   };
 
   const verifyPayment = async (orderId: string): Promise<boolean> => {
@@ -1282,11 +1301,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refreshBackendData();
       return true;
     } catch {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: "Verified", orderStatus: "Order Confirmed" } : o))
-      );
-      toast.success("Payment verified locally");
-      return true;
+      toast.error("Network error verifying payment. Please try again.");
+      return false;
     }
   };
 
@@ -1310,23 +1326,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       refreshBackendData();
       return true;
     } catch {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, paymentStatus: "Rejected", rejectionReason: reason } : o))
-      );
-      toast.error(`Payment rejected locally: ${reason}`);
-      return true;
+      toast.error("Network error rejecting payment. Please try again.");
+      return false;
     }
   };
 
   const updateOrderStatus = async (
     orderId: string,
-    status: OrderStatus,
+    status?: OrderStatus,
     deliveryStatus?: DeliveryStatus,
     manualRef?: string,
     notes?: string
   ): Promise<boolean> => {
     try {
-      await fetch(`/api/admin/orders/${orderId}/status`, {
+      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1336,24 +1349,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           deliveryNotes: notes,
         }),
       });
-    } catch {}
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to update order status.");
+        return false;
+      }
 
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id === orderId) {
-          return {
-            ...o,
-            orderStatus: status,
-            deliveryStatus: deliveryStatus || o.deliveryStatus,
-            manualDeliveryReference: manualRef || o.manualDeliveryReference,
-            deliveryNotes: notes || o.deliveryNotes,
-          };
-        }
-        return o;
-      })
-    );
-    toast.success(`Order status updated to: ${status}`);
-    return true;
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id === orderId) {
+            return {
+              ...o,
+              orderStatus: status || o.orderStatus,
+              deliveryStatus: deliveryStatus || o.deliveryStatus,
+              manualDeliveryReference: manualRef || o.manualDeliveryReference,
+              deliveryNotes: notes || o.deliveryNotes,
+            };
+          }
+          return o;
+        })
+      );
+      if (status) toast.success(`Order status updated to: ${status}`);
+      else toast.success("Delivery details updated");
+      return true;
+    } catch {
+      toast.error("Network error updating order. Please try again.");
+      return false;
+    }
   };
 
   const updateDeliveryStatus = async (
@@ -1362,22 +1384,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     manualReference?: string,
     notes?: string
   ): Promise<boolean> => {
-    return updateOrderStatus(orderId, "Processing", status, manualReference, notes);
+    // undefined orderStatus leaves the existing order stage untouched
+    return updateOrderStatus(orderId, undefined, status, manualReference, notes);
   };
 
   const adjustStock = async (productId: string, newQuantity: number, reason: string) => {
     try {
-      await fetch("/api/admin/inventory/adjust", {
+      const res = await fetch("/api/admin/inventory/adjust", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId, newQuantity, reason, adminName: "Admin" }),
+        body: JSON.stringify({
+          productId,
+          newQuantity,
+          reason,
+          performedBy: currentUser?.fullName || "Store Owner",
+        }),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to adjust inventory.");
+        return;
+      }
       await refreshBackendData();
-    } catch {}
-    setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, stockQuantity: newQuantity } : p))
-    );
-    toast.success("Inventory adjusted successfully");
+      setProducts((prev) =>
+        prev.map((p) => (p.id === productId ? { ...p, stockQuantity: newQuantity } : p))
+      );
+      toast.success("Inventory adjusted successfully");
+    } catch {
+      toast.error("Network error adjusting inventory. Please try again.");
+    }
   };
 
   const updateSettings = async (newSettings: Partial<StoreSettings>) => {
@@ -1388,11 +1423,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(newSettings),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to update store settings.");
+        return;
+      }
       if (data.settings) setSettings(data.settings);
       await refreshBackendData();
-    } catch {}
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-    toast.success("Store settings updated");
+      setSettings((prev) => ({ ...prev, ...newSettings }));
+      toast.success("Store settings updated");
+    } catch {
+      toast.error("Network error updating settings. Please try again.");
+    }
   };
 
   const addMarquee = async (item: Omit<MarqueeItem, "id">): Promise<boolean> => {
@@ -1408,33 +1449,50 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         toast.success("Marquee ticker published!");
         return true;
       }
-    } catch {}
-    const newM = { ...item, id: `marq-${Date.now()}` } as MarqueeItem;
-    setMarquees((prev) => [...prev, newM]);
-    toast.success("Marquee created locally!");
-    return true;
+      toast.error(data.error || "Failed to publish marquee ticker.");
+      return false;
+    } catch {
+      toast.error("Network error publishing marquee. Please try again.");
+      return false;
+    }
   };
 
   const deleteMarquee = async (id: string): Promise<boolean> => {
     try {
-      await fetch(`/api/admin/marquees/${id}`, { method: "DELETE" });
-    } catch {}
-    setMarquees((prev) => prev.filter((m) => m.id !== id));
-    toast.info("Marquee removed");
-    return true;
+      const res = await fetch(`/api/admin/marquees/${id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to remove marquee ticker.");
+        return false;
+      }
+      setMarquees((prev) => prev.filter((m) => m.id !== id));
+      toast.info("Marquee removed");
+      return true;
+    } catch {
+      toast.error("Network error removing marquee. Please try again.");
+      return false;
+    }
   };
 
   const updateHomepageSections = async (sections: HomepageSection[]): Promise<boolean> => {
     try {
-      await fetch("/api/admin/layout", {
+      const res = await fetch("/api/admin/layout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sections }),
       });
-    } catch {}
-    setHomepageSections(sections);
-    toast.success("Homepage layout preview updated!");
-    return true;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to save homepage layout.");
+        return false;
+      }
+      setHomepageSections(sections);
+      toast.success("Homepage layout preview updated!");
+      return true;
+    } catch {
+      toast.error("Network error saving layout. Please try again.");
+      return false;
+    }
   };
 
   return (

@@ -22,7 +22,7 @@ export function HeroBanner() {
 
   if (activeBanners.length === 0) return null;
 
-  const current = activeBanners[currentIndex];
+  const current = activeBanners[Math.max(0, Math.min(currentIndex, activeBanners.length - 1))];
 
   return (
     <div className="space-y-3 my-2 sm:my-6">
