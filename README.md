@@ -177,11 +177,13 @@ RAZORPAY_WEBHOOK_SECRET=
 
 Keep the admin-session secret and Razorpay secret on the backend. Configure database credentials and Supabase row-level security for the intended deployment.
 
-## Deploy on Vercel
+## Deploy — Vercel (frontend) + Render (backend)
 
-The root `vercel.json` defines the `backend` Express service and `frontend` Next.js service. Select **Services** as the Vercel project's framework, connect the repository root, and configure secrets on the backend service only: `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`), `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control. Uploaded product and profile images are stored in Vercel Blob; the database stores their public URLs. Images are limited to 3 MB.
-
-The public `/api/*` path is routed to the backend; all other paths are routed to the frontend. In local development, Next.js continues to proxy `/api/*` and `/uploads/*` to `127.0.0.1:5000`.
+- **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/api` session cookies keep working.
+- **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/api/health`.
+- Backend environment variables on Render: `FRONTEND_URL` (the deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
+- **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Product and profile images go to Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set; otherwise they are stored inline in the database. Images are limited to 3 MB.
+- If Razorpay webhooks are configured, point the webhook URL at `https://<the-vercel-domain>/api/payments/razorpay/webhook` (the frontend proxies it to the backend).
 
 ## Database setup
 

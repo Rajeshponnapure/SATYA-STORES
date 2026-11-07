@@ -45,8 +45,8 @@ const nextConfig = {
         },
       ];
     }
-    // In Vercel Services deployments, the root vercel.json routes API and
-    // upload requests directly to the backend service.
+    // On Vercel without a backend URL configured there is no backend to proxy
+    // to, so /api 404s quickly instead of quietly failing against localhost.
     if (process.env.VERCEL) return [];
     return [
       {

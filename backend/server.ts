@@ -333,7 +333,8 @@ app.post("/api/upload", async (req: Request, res: Response) => {
     const uniqueName = `upload_${Date.now()}_${cleanBase}.${ext}`;
     let relativeUrl = `/uploads/${uniqueName}`;
 
-    if (process.env.VERCEL && process.env.BLOB_READ_WRITE_TOKEN && putBlob) {
+    // Blob storage works on any host (Vercel, Render, ...) once the token is set.
+    if (process.env.BLOB_READ_WRITE_TOKEN && putBlob) {
       try {
         const blob = await putBlob(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
         relativeUrl = blob.url;
@@ -341,8 +342,9 @@ app.post("/api/upload", async (req: Request, res: Response) => {
         console.warn("[Upload] Vercel blob put warning, using inline data URI:", blobErr);
         relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
       }
-    } else if (process.env.VERCEL) {
-      // Inline base64 URI guarantees persistence across serverless invocations without external tokens
+    } else if (process.env.RENDER) {
+      // Inline base64 URI guarantees image persistence through Render deploys
+      // (ephemeral disk) when no Blob token is configured.
       relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
     } else {
       fs.writeFileSync(path.join(uploadsDir, uniqueName), buffer);
