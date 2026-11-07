@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
@@ -31,7 +32,7 @@ export function CategoryGrid() {
               className="glass-card rounded-2xl p-2 sm:p-4 hover:shadow-md transition-all group flex flex-col items-center text-center border border-slate-200/80 min-w-[95px] sm:min-w-0 shrink-0"
             >
               <div className="h-14 w-14 sm:h-20 sm:w-20 rounded-xl sm:rounded-2xl bg-slate-100 overflow-hidden mb-1.5 sm:mb-3 p-1 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <img
+                <Image width={640} height={640} unoptimized
                   src={cat.image}
                   alt={cat.name}
                   className="h-full w-full object-cover rounded-lg sm:rounded-xl"

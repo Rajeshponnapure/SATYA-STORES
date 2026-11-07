@@ -1,11 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import React, { useMemo, useState } from "react";
-import { useParams, notFound } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
 import { ProductCard } from "@/components/storefront/ProductCard";
-import { ChevronRight, ArrowLeft, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, SlidersHorizontal } from "lucide-react";
 
 export default function CategoryPage() {
   const params = useParams();
@@ -80,7 +81,7 @@ export default function CategoryPage() {
         </div>
 
         <div className="h-28 w-28 sm:h-36 sm:w-36 rounded-2xl overflow-hidden shrink-0 border-2 border-white shadow-md">
-          <img
+          <Image width={640} height={640} unoptimized
             src={currentCategory.image}
             alt={currentCategory.name}
             className="w-full h-full object-cover"
@@ -142,4 +143,3 @@ export default function CategoryPage() {
     </div>
   );
 }
-

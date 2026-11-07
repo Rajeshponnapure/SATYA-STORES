@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -97,7 +98,13 @@ export function MobileBottomNav() {
                 : "text-slate-500 hover:text-slate-900"
             }`}
           >
-            <UserIcon className="h-5 w-5 mb-0.5" />
+            {currentUser?.profileImage ? (
+              <span className="relative mb-0.5 h-5 w-5 overflow-hidden rounded-full ring-1 ring-slate-300">
+                <Image src={currentUser.profileImage} alt="" aria-hidden="true" fill sizes="20px" unoptimized className="object-cover" />
+              </span>
+            ) : (
+              <UserIcon className="h-5 w-5 mb-0.5" />
+            )}
             {currentUser ? "Account" : "Sign In"}
           </Link>
         </div>
@@ -133,7 +140,7 @@ export function MobileBottomNav() {
                   className="flex items-center justify-between p-3 rounded-xl border border-slate-200/70 bg-slate-50/50 hover:bg-blue-50/50 transition-colors"
                 >
                   <div className="flex items-center space-x-3">
-                    <img
+                    <Image width={640} height={640} unoptimized
                       src={cat.image}
                       alt={cat.name}
                       className="w-11 h-11 rounded-lg object-cover border border-slate-200"

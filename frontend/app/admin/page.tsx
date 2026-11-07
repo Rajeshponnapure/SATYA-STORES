@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
@@ -18,14 +19,16 @@ import {
   EyeOff,
   Plus,
   Edit,
+  Pencil,
+  UserPlus,
+  GripVertical,
+  Undo2,
+  Copy,
   Truck,
-  ArrowUpRight,
   RefreshCw,
   Search,
-  FileText,
   Users,
   KeyRound,
-  Tag,
   Volume2,
   Layout,
   MoveUp,
@@ -36,10 +39,20 @@ import {
   Smartphone,
   ExternalLink,
   Database,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { OrderStatus, DeliveryStatus, Product, Category, Coupon, MarqueeItem, HomepageSection, User, AdminProfile } from "@/types";
+import {
+  DeliveryStatus,
+  Product,
+  HomepageSection,
+  User,
+  Order,
+  RazorpaySettlement,
+} from "@/types";
 import { ProductImageUploader } from "@/components/admin/ProductImageUploader";
+import { ProfileImagePicker } from "@/components/profile/ProfileImagePicker";
 
 export default function AdminDashboardPage() {
   const {
@@ -47,15 +60,14 @@ export default function AdminDashboardPage() {
     categories,
     orders,
     settings,
-    inventoryMovements,
     verifyPayment,
     rejectPayment,
-    updateOrderStatus,
     updateDeliveryStatus,
     adjustStock,
     addProduct,
     updateProduct,
     deleteProduct,
+    restoreProduct,
     addCategory,
     deleteCategory,
     updateSettings,
@@ -64,6 +76,9 @@ export default function AdminDashboardPage() {
     isAdminAuthenticated,
     adminUsers,
     fetchAdminUsers,
+    adminCreateUser,
+    adminUpdateUser,
+    adminDeleteUser,
     adminUpdateUserPassword,
     marquees,
     addMarquee,
@@ -74,9 +89,21 @@ export default function AdminDashboardPage() {
     adminProfile,
     fetchAdminProfile,
     updateAdminProfile,
+    fetchAdmin2faSetup,
+    verifyAdmin2faCode,
     generateAdmin2fa,
     adminChangePasswordWith2FA,
+    processRefund,
+    fetchSettlements,
   } = useStore();
+
+  // Razorpay Payments, Refunds & Settlements State
+  const [paymentsSubTab, setPaymentsSubTab] = useState<"razorpay" | "settlements" | "pending_utr">("razorpay");
+  const [settlementsList, setSettlementsList] = useState<RazorpaySettlement[]>([]);
+  const [refundModalOrder, setRefundModalOrder] = useState<Order | null>(null);
+  const [refundAmountInput, setRefundAmountInput] = useState<number>(0);
+  const [refundReasonInput, setRefundReasonInput] = useState<string>("Customer requested cancellation");
+  const [isProcessingRefund, setIsProcessingRefund] = useState(false);
 
   // Login form state
   const [adminEmail, setAdminEmail] = useState("admin@sathyastores.com");
@@ -150,8 +177,58 @@ export default function AdminDashboardPage() {
   const [newProdStock, setNewProdStock] = useState(15);
   const [newProdImages, setNewProdImages] = useState<string[]>([
     "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80",
+    "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80",
   ]);
   const [newProdDesc, setNewProdDesc] = useState("");
+
+  // Product Edit Modal State
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editProdName, setEditProdName] = useState("");
+  const [editProdSku, setEditProdSku] = useState("");
+  const [editProdBrand, setEditProdBrand] = useState("");
+  const [editProdCategory, setEditProdCategory] = useState("");
+  const [editProdMrp, setEditProdMrp] = useState(0);
+  const [editProdPrice, setEditProdPrice] = useState(0);
+  const [editProdStock, setEditProdStock] = useState(0);
+  const [editProdImages, setEditProdImages] = useState<string[]>([]);
+  const [editProdDesc, setEditProdDesc] = useState("");
+  const [isUpdatingProduct, setIsUpdatingProduct] = useState(false);
+
+  // Product Delete Warning & 60-Second Undo State
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [deletedProductForUndo, setDeletedProductForUndo] = useState<Product | null>(null);
+  const [undoCountdown, setUndoCountdown] = useState<number>(0);
+
+  // Admin User CRUD State
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserMobile, setNewUserMobile] = useState("");
+  const [newUserPasswordInput, setNewUserPasswordInput] = useState("");
+  const [newUserRole, setNewUserRole] = useState<"customer" | "admin">("customer");
+  const [newUserStatus, setNewUserStatus] = useState<"active" | "suspended">("active");
+
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editUserFullName, setEditUserFullName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserMobile, setEditUserMobile] = useState("");
+  const [editUserRole, setEditUserRole] = useState<"customer" | "admin">("customer");
+  const [editUserStatus, setEditUserStatus] = useState<"active" | "suspended">("active");
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+
+  // External 2FA State
+  const [admin2faSetup, setAdmin2faSetup] = useState<{
+    secret: string;
+    otpauthUri: string;
+    provider: string;
+  } | null>(null);
+  const [test2faInput, setTest2faInput] = useState("");
+  const [test2faStatus, setTest2faStatus] = useState<string | null>(null);
+  const [isTesting2fa, setIsTesting2fa] = useState(false);
+
+  // Layout Drag & Drop State
+  const [draggedSectionIndex, setDraggedSectionIndex] = useState<number | null>(null);
+  const [dragOverSectionIndex, setDragOverSectionIndex] = useState<number | null>(null);
 
   // Category Add Modal State
   const [showAddCategory, setShowAddCategory] = useState(false);
@@ -182,6 +259,33 @@ export default function AdminDashboardPage() {
   }, [isAdminAuthenticated, userSearch, fetchAdminUsers, fetchAdminProfile]);
 
   useEffect(() => {
+    if (activeTab === "payments" && fetchSettlements) {
+      fetchSettlements().then((s) => setSettlementsList(s));
+    }
+  }, [activeTab, fetchSettlements]);
+
+  const handleOpenRefundModal = (order: Order) => {
+    setRefundModalOrder(order);
+    setRefundAmountInput(order.refundAmount || order.totalAmount);
+    setRefundReasonInput("Customer requested refund / cancellation");
+  };
+
+  const handleConfirmRefund = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!refundModalOrder) return;
+    setIsProcessingRefund(true);
+    const result = await processRefund(
+      refundModalOrder.id,
+      refundAmountInput,
+      refundReasonInput
+    );
+    setIsProcessingRefund(false);
+    if (result.success) {
+      setRefundModalOrder(null);
+    }
+  };
+
+  useEffect(() => {
     if (adminProfile) {
       setEditAdminName(adminProfile.fullName);
       setEditAdminEmail(adminProfile.email);
@@ -199,6 +303,32 @@ export default function AdminDashboardPage() {
     await adminLogin(adminPassword, adminEmail);
     setIsLoggingIn(false);
   };
+
+  // Keep hooks above the unauthenticated screen return so their order is stable.
+  useEffect(() => {
+    if (undoCountdown <= 0) {
+      setDeletedProductForUndo(null);
+      return;
+    }
+    const timer = setInterval(() => {
+      setUndoCountdown((prev) => {
+        if (prev <= 1) {
+          setDeletedProductForUndo(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [undoCountdown]);
+
+  useEffect(() => {
+    if (isAdminAuthenticated && (activeTab === "settings" || activeTab === "profile")) {
+      fetchAdmin2faSetup().then((res) => {
+        if (res) setAdmin2faSetup(res);
+      });
+    }
+  }, [isAdminAuthenticated, activeTab, fetchAdmin2faSetup]);
 
   // If not authenticated, render the Secure Admin Login Screen
   if (!isAdminAuthenticated) {
@@ -325,10 +455,22 @@ export default function AdminDashboardPage() {
 
   const handleAddProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdName || !newProdSku) return;
+    if (!newProdName || !newProdSku) {
+      toast.error("Please provide both Product Name and SKU.");
+      return;
+    }
+
+    if (newProdImages.length < 2) {
+      toast.error("Please add at least 2 images for the product (Maximum: 10 images).");
+      return;
+    }
+    if (newProdImages.length > 10) {
+      toast.error("A product cannot have more than 10 images.");
+      return;
+    }
 
     const catObj = categories.find((c) => c.id === newProdCategory);
-    await addProduct({
+    const success = await addProduct({
       productName: newProdName,
       slug: newProdName.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       sku: newProdSku,
@@ -336,10 +478,7 @@ export default function AdminDashboardPage() {
       categoryId: newProdCategory,
       categoryName: catObj?.name || "Electronics",
       description: newProdDesc || "High quality electronics with manufacturer warranty.",
-      images:
-        newProdImages.length > 0
-          ? newProdImages
-          : ["https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80"],
+      images: newProdImages,
       mrp: Number(newProdMrp),
       sellingPrice: Number(newProdPrice),
       stockQuantity: Number(newProdStock),
@@ -353,12 +492,15 @@ export default function AdminDashboardPage() {
       reviewCount: 1,
     });
 
-    setShowAddProduct(false);
-    setNewProdName("");
-    setNewProdSku("");
-    setNewProdImages([
-      "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80",
-    ]);
+    if (success) {
+      setShowAddProduct(false);
+      setNewProdName("");
+      setNewProdSku("");
+      setNewProdImages([
+        "https://images.unsplash.com/photo-1592750475338-74b7b21085ab?auto=format&fit=crop&w=600&q=80",
+        "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=600&q=80",
+      ]);
+    }
   };
 
   const handleAddCategorySubmit = async (e: React.FormEvent) => {
@@ -424,6 +566,199 @@ export default function AdminDashboardPage() {
   const toggleSectionEnabled = (id: string) => {
     const updated = homepageSections.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
     updateHomepageSections(updated);
+  };
+
+  const handleOpenEditProduct = (p: Product) => {
+    setEditingProduct(p);
+    setEditProdName(p.productName);
+    setEditProdSku(p.sku);
+    setEditProdBrand(p.brand);
+    setEditProdCategory(p.categoryId);
+    setEditProdMrp(p.mrp);
+    setEditProdPrice(p.sellingPrice);
+    setEditProdStock(p.stockQuantity);
+    setEditProdImages(p.images || []);
+    setEditProdDesc(p.description || "");
+  };
+
+  const handleEditProductSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+    if (!editProdName || !editProdSku) {
+      toast.error("Product name and SKU are required.");
+      return;
+    }
+    if (editProdImages.length < 2) {
+      toast.error("Please add at least 2 images for the product (Maximum: 10 images).");
+      return;
+    }
+    if (editProdImages.length > 10) {
+      toast.error("A product cannot have more than 10 images.");
+      return;
+    }
+
+    setIsUpdatingProduct(true);
+    const catObj = categories.find((c) => c.id === editProdCategory);
+    const success = await updateProduct(editingProduct.id, {
+      productName: editProdName,
+      sku: editProdSku,
+      brand: editProdBrand,
+      categoryId: editProdCategory,
+      categoryName: catObj?.name || editingProduct.categoryName,
+      mrp: Number(editProdMrp),
+      sellingPrice: Number(editProdPrice),
+      stockQuantity: Number(editProdStock),
+      images: editProdImages,
+      description: editProdDesc,
+    });
+    setIsUpdatingProduct(false);
+    if (success) {
+      setEditingProduct(null);
+    }
+  };
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!productToDelete) return;
+    const target = productToDelete;
+    const success = await deleteProduct(target.id);
+    setProductToDelete(null);
+    if (success) {
+      setDeletedProductForUndo(target);
+      setUndoCountdown(60);
+      toast.info(`Product "${target.productName}" deleted. You have 60 seconds to undo.`);
+    }
+  };
+
+  const handleUndoDelete = async () => {
+    if (!deletedProductForUndo) return;
+    const target = deletedProductForUndo;
+    const success = await restoreProduct(target.id);
+    if (success) {
+      setDeletedProductForUndo(null);
+      setUndoCountdown(0);
+    }
+  };
+
+  const handleAddUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserFullName || !newUserEmail || !newUserMobile) {
+      toast.error("Full Name, Email, and Mobile are required.");
+      return;
+    }
+    const success = await adminCreateUser({
+      fullName: newUserFullName,
+      email: newUserEmail,
+      mobileNumber: newUserMobile,
+      password: newUserPasswordInput || "SatyaStores@123",
+      role: newUserRole,
+      accountStatus: newUserStatus,
+    });
+    if (success) {
+      setShowAddUser(false);
+      setNewUserFullName("");
+      setNewUserEmail("");
+      setNewUserMobile("");
+      setNewUserPasswordInput("");
+      setNewUserRole("customer");
+      setNewUserStatus("active");
+      fetchAdminUsers(userSearch);
+    }
+  };
+
+  const handleOpenEditUser = (u: User) => {
+    setEditingUser(u);
+    setEditUserFullName(u.fullName);
+    setEditUserEmail(u.email);
+    setEditUserMobile(u.mobileNumber);
+    setEditUserRole(u.role === "admin" ? "admin" : "customer");
+    setEditUserStatus(u.accountStatus);
+  };
+
+  const handleEditUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    const success = await adminUpdateUser(editingUser.id, {
+      fullName: editUserFullName,
+      email: editUserEmail,
+      mobileNumber: editUserMobile,
+      role: editUserRole,
+      accountStatus: editUserStatus,
+    });
+    if (success) {
+      setEditingUser(null);
+      fetchAdminUsers(userSearch);
+    }
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    const success = await adminDeleteUser(userToDelete.id);
+    setUserToDelete(null);
+    if (success) {
+      fetchAdminUsers(userSearch);
+    }
+  };
+
+  const handleTest2faCode = async () => {
+    if (!test2faInput || test2faInput.length !== 6) {
+      toast.error("Please enter a 6-digit verification code to test.");
+      return;
+    }
+    setIsTesting2fa(true);
+    const res = await verifyAdmin2faCode(test2faInput);
+    setIsTesting2fa(false);
+    if (res.valid) {
+      setTest2faStatus(`Verified successfully via ${res.method}!`);
+      toast.success(`2FA Code Verified: ${res.method}`);
+    } else {
+      setTest2faStatus(null);
+      toast.error(res.error || "Invalid 2FA code.");
+    }
+  };
+
+  // Drag & drop handlers for homepage containers
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedSectionIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverSectionIndex !== index) {
+      setDragOverSectionIndex(index);
+    }
+  };
+
+  const handleDrop = (dropIndex: number) => {
+    if (draggedSectionIndex === null || draggedSectionIndex === dropIndex) {
+      setDraggedSectionIndex(null);
+      setDragOverSectionIndex(null);
+      return;
+    }
+
+    const updated = [...homepageSections];
+    const itemToMove = updated.splice(draggedSectionIndex, 1)[0];
+    updated.splice(dropIndex, 0, itemToMove);
+
+    updated.forEach((s, i) => (s.order = i + 1));
+    updateHomepageSections(updated);
+
+    setDraggedSectionIndex(null);
+    setDragOverSectionIndex(null);
+    toast.success(`Section order updated: "${itemToMove.title}" moved to position #${dropIndex + 1}`);
+  };
+
+  const handleResetLayoutToDefault = () => {
+    const defaultSections: HomepageSection[] = [
+      { id: "sec-hero", type: "hero_banner", title: "Hero Carousel Banners", enabled: true, order: 1 },
+      { id: "sec-categories", type: "categories", title: "Shop by Category Grid", enabled: true, order: 2 },
+      { id: "sec-best-sellers", type: "best_sellers", title: "Best Selling Electronics", enabled: true, order: 3 },
+      { id: "sec-featured", type: "featured_deals", title: "All Electronics Catalog & Grid", enabled: true, order: 4 },
+      { id: "sec-trust", type: "trust_badges", title: "Direct UPI & Trust Banner", enabled: true, order: 5 },
+    ];
+    updateHomepageSections(defaultSections);
+    toast.success("Homepage layout restored to default 5 containers!");
   };
 
   return (
@@ -659,6 +994,14 @@ export default function AdminDashboardPage() {
                   }}
                   className="space-y-3.5 pt-1"
                 >
+                  <ProfileImagePicker
+                    image={adminProfile?.profileImage}
+                    name={editAdminName}
+                    onUpload={async (_fileName, fileData) => {
+                      const saved = await updateAdminProfile({ profileImage: fileData });
+                      return saved ? fileData : null;
+                    }}
+                  />
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">Owner Full Name</label>
                     <input
@@ -722,6 +1065,14 @@ export default function AdminDashboardPage() {
                 </form>
               ) : (
                 <div className="space-y-3 pt-1">
+                  {adminProfile?.profileImage && (
+                    <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+                      <span className="relative h-14 w-14 overflow-hidden rounded-full bg-slate-200">
+                        <Image src={adminProfile.profileImage} alt="Store owner profile photo" fill sizes="56px" unoptimized className="object-cover" />
+                      </span>
+                      <span className="text-xs font-semibold text-slate-600">Store owner profile photo</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
                     <span className="text-xs text-slate-500 font-medium">Administrator Name</span>
                     <span className="text-xs font-bold text-slate-900">{adminProfile?.fullName || editAdminName}</span>
@@ -771,15 +1122,67 @@ export default function AdminDashboardPage() {
                 </span>
               </div>
 
-              {/* 2FA Status Banner */}
-              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1">
+              {/* External 2FA Provider Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs space-y-3">
                 <div className="flex items-center justify-between font-bold text-slate-800">
-                  <span>2FA Protection Mode</span>
-                  <span className="font-mono text-blue-600">6-Digit OTP</span>
+                  <div className="flex items-center space-x-1.5">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span>External Two-Factor Authentication (2FA)</span>
+                  </div>
+                  <span className="font-mono text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    RFC 6238 TOTP
+                  </span>
                 </div>
-                <p className="text-slate-500 text-[11px]">
-                  Whenever changing the admin password, verify with a fresh 6-digit code generated for this session.
+
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Every time you reset or update your admin password, you must verify with a 6-digit code from your external Authenticator app (<strong>Google Authenticator, Microsoft Authenticator, Authy, or Apple Passwords</strong>).
                 </p>
+
+                {/* Secret Key Setup */}
+                <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authenticator Setup Key:</span>
+                    <span className="font-mono font-bold text-slate-900 text-xs tracking-wider select-all">
+                      {admin2faSetup?.secret || "JBSWY3DPEHPK3PXP"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(admin2faSetup?.secret || "JBSWY3DPEHPK3PXP");
+                      toast.success("2FA Secret Key copied to clipboard! Paste it into Google or Microsoft Authenticator.");
+                    }}
+                    className="py-1 px-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-[11px] flex items-center space-x-1 shrink-0 self-start sm:self-auto"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Copy Key</span>
+                  </button>
+                </div>
+
+                {/* Test Verification Sync */}
+                <div className="pt-1 flex items-center gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    placeholder="Test 6-digit app code..."
+                    value={test2faInput}
+                    onChange={(e) => setTest2faInput(e.target.value)}
+                    className="w-36 p-1.5 rounded-lg border border-slate-200 text-xs font-mono text-center"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleTest2faCode}
+                    disabled={isTesting2fa || test2faInput.length !== 6}
+                    className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
+                  >
+                    {isTesting2fa ? "Verifying..." : "Verify Sync"}
+                  </button>
+                  {test2faStatus && (
+                    <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> {test2faStatus}
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Form to change admin password */}
@@ -787,7 +1190,7 @@ export default function AdminDashboardPage() {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!adminCurrentPass || !adminNewPass || !admin2faCode) {
-                    toast.error("Please fill in current password, new password, and 2FA code.");
+                    toast.error("Please fill in current password, new password, and external 2FA code.");
                     return;
                   }
                   if (adminNewPass.length < 6) {
@@ -892,7 +1295,7 @@ export default function AdminDashboardPage() {
                 <div className="pt-2 border-t border-slate-100 space-y-2">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold text-slate-800">
-                      Two-Factor (2FA) Security Code
+                      Two-Factor (2FA) Security Code from Authenticator App
                     </label>
                     <button
                       type="button"
@@ -904,14 +1307,15 @@ export default function AdminDashboardPage() {
                         }
                       }}
                       className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                      title="Dispatch emergency backup code via external gateway"
                     >
-                      Generate 2FA Code
+                      Send Emergency SMS Code
                     </button>
                   </div>
 
                   {generated2faNotice && (
                     <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
-                      <span>Simulated 2FA Code sent to phone:</span>
+                      <span>Emergency Code dispatched to admin:</span>
                       <span className="font-mono font-black text-amber-950 bg-amber-200 px-2 py-0.5 rounded">
                         {generated2faNotice}
                       </span>
@@ -922,7 +1326,7 @@ export default function AdminDashboardPage() {
                     type="text"
                     required
                     maxLength={6}
-                    placeholder="Enter 6-digit 2FA code"
+                    placeholder="Enter 6-digit code from Google/Microsoft Authenticator"
                     value={admin2faCode}
                     onChange={(e) => setAdmin2faCode(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-widest text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
@@ -953,7 +1357,7 @@ export default function AdminDashboardPage() {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 2: REGISTERED USERS MANAGEMENT & PASSWORD MODIFICATION */}
+      {/* TAB 2: REGISTERED USERS MANAGEMENT & CRUD */}
       {/* ========================================================= */}
       {activeTab === "users" && (
         <div className="space-y-4">
@@ -969,9 +1373,18 @@ export default function AdminDashboardPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             </div>
 
-            <span className="text-xs font-bold text-slate-500">
-              Total Registered: {adminUsers.length} Users
-            </span>
+            <div className="flex items-center space-x-3 w-full sm:w-auto justify-between sm:justify-end">
+              <span className="text-xs font-bold text-slate-500">
+                Total: {adminUsers.length} Users
+              </span>
+              <button
+                onClick={() => setShowAddUser(true)}
+                className="py-2 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center space-x-1.5 shadow-sm shadow-blue-500/20"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Add New User</span>
+              </button>
+            </div>
           </div>
 
           <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
@@ -991,10 +1404,21 @@ export default function AdminDashboardPage() {
                       <div>
                         <div className="flex items-center space-x-2">
                           <h4 className="font-bold text-slate-900 text-sm">{u.fullName}</h4>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                            u.role === "owner" ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            u.role === "owner"
+                              ? "bg-amber-100 text-amber-800"
+                              : u.role === "admin"
+                              ? "bg-purple-100 text-purple-800"
+                              : "bg-blue-100 text-blue-800"
                           }`}>
                             {u.role.toUpperCase()}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            u.accountStatus === "active"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-rose-100 text-rose-800"
+                          }`}>
+                            {u.accountStatus === "active" ? "Active" : "Suspended"}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
@@ -1006,14 +1430,34 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center space-x-2 self-end sm:self-auto">
+                    <div className="flex items-center space-x-1.5 self-end sm:self-auto">
+                      <button
+                        onClick={() => handleOpenEditUser(u)}
+                        className="py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center space-x-1 transition-colors"
+                        title="Edit User Info"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-slate-600" />
+                        <span>Edit</span>
+                      </button>
+
                       <button
                         onClick={() => setSelectedUserForPassword(u)}
-                        className="py-1.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center space-x-1 transition-colors"
+                        className="py-1.5 px-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center space-x-1 transition-colors"
+                        title="Change User Password"
                       >
                         <KeyRound className="h-3.5 w-3.5 text-blue-600" />
-                        <span>Change Password</span>
+                        <span>Password</span>
                       </button>
+
+                      {u.role !== "owner" && (
+                        <button
+                          onClick={() => setUserToDelete(u)}
+                          className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Delete User"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1024,124 +1468,443 @@ export default function AdminDashboardPage() {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: PAYMENTS & UTR VERIFICATION LEDGER */}
+      {/* TAB 3: RAZORPAY PAYMENTS, REFUNDS & SETTLEMENTS LEDGER */}
       {/* ========================================================= */}
       {activeTab === "payments" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">
-              Payment Verification Desk ({pendingPayments.length} Pending)
-            </h2>
+        <div className="space-y-5">
+          {/* Top Header & Gateway Status */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-slate-900">
+                  Razorpay Payments, Refunds & Settlements
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-200 flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-600" /> Gateway Active
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Manage online transactions, Razorpay instant refunds, and bank account payouts
+              </p>
+            </div>
+
+            {/* Sub-tab Switcher */}
+            <div className="flex items-center gap-1 bg-slate-200/80 p-1 rounded-xl text-xs font-bold self-start sm:self-auto overflow-x-auto no-scrollbar">
+              <button
+                type="button"
+                onClick={() => setPaymentsSubTab("razorpay")}
+                className={`py-1.5 px-3 rounded-lg transition-all whitespace-nowrap ${
+                  paymentsSubTab === "razorpay"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Razorpay Payments
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentsSubTab("settlements")}
+                className={`py-1.5 px-3 rounded-lg transition-all whitespace-nowrap ${
+                  paymentsSubTab === "settlements"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Settlements & Payouts
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentsSubTab("pending_utr")}
+                className={`py-1.5 px-3 rounded-lg transition-all whitespace-nowrap ${
+                  paymentsSubTab === "pending_utr"
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Manual UTR Desk ({pendingPayments.length})
+              </button>
+            </div>
           </div>
 
-          {pendingPayments.length === 0 ? (
-            <div className="p-10 text-center bg-white/90 rounded-2xl border border-slate-200 text-xs text-slate-500">
-              <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-              All customer payments have been verified! No pending UTR submissions.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pendingPayments.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3"
-                >
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div>
-                      <span className="font-mono text-xs font-bold text-blue-600">
-                        {order.orderNumber}
-                      </span>
-                      <p className="text-xs font-bold text-slate-900">{order.customerName}</p>
-                    </div>
-                    <span className="text-base font-black text-slate-900">
-                      {formatINR(order.totalAmount)}
-                    </span>
-                  </div>
-
-                  <div className="bg-amber-50/80 p-3 rounded-xl border border-amber-200/60 text-xs space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Method:</span>
-                      <span className="font-bold text-slate-800">{order.paymentMethod}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Submitted UTR:</span>
-                      <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-amber-200">
-                        {order.paymentReference || "N/A"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {order.paymentEvidenceUrl && (
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-500 block mb-1">Receipt Proof:</span>
-                      <a
-                        href={order.paymentEvidenceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-block"
-                      >
-                        <img
-                          src={order.paymentEvidenceUrl}
-                          alt="Payment Receipt"
-                          className="h-16 w-24 object-cover rounded-lg border border-slate-200 hover:scale-105 transition-transform"
-                        />
-                      </a>
-                    </div>
-                  )}
-
-                  <div className="flex items-center space-x-2 pt-2">
-                    <button
-                      onClick={() => handleVerify(order.id)}
-                      className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-1 shadow-sm"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>Verify & Confirm</span>
-                    </button>
-                    <button
-                      onClick={() => setRejectOrderId(order.id)}
-                      className="flex-1 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs border border-rose-200 flex items-center justify-center space-x-1"
-                    >
-                      <XCircle className="h-4 w-4" />
-                      <span>Reject with Reason</span>
-                    </button>
-                  </div>
+          {/* SUBTAB 1: RAZORPAY TRANSACTIONS & REFUNDS */}
+          {paymentsSubTab === "razorpay" && (
+            <div className="space-y-4">
+              {/* Metrics cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 bg-white/90 rounded-2xl border border-slate-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Total Volume
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-slate-900">
+                    {formatINR(verifiedRevenue)}
+                  </span>
                 </div>
-              ))}
+                <div className="p-3.5 bg-white/90 rounded-2xl border border-slate-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Verified Orders
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-emerald-600">
+                    {verifiedOrders.length}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-white/90 rounded-2xl border border-slate-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Refunds Processed
+                  </span>
+                  <span className="text-base sm:text-lg font-black text-purple-600">
+                    {
+                      orders.filter(
+                        (o) => o.paymentStatus === "Refunded" || o.paymentStatus === "Partially Refunded"
+                      ).length
+                    }
+                  </span>
+                </div>
+                <div className="p-3.5 bg-white/90 rounded-2xl border border-slate-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                    Bank Payout Acc
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 truncate block">
+                    Axis Bank (*7890)
+                  </span>
+                </div>
+              </div>
+
+              {/* Transactions Table with Responsive Mobile Scroll */}
+              <div className="bg-white/95 rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                  <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                    Payment Gateway Transactions Ledger
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    {orders.filter((o) => o.paymentStatus !== "Awaiting Payment").length} records
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left divide-y divide-slate-100 text-xs min-w-[650px]">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Order #</th>
+                        <th className="p-3">Customer</th>
+                        <th className="p-3">Amount</th>
+                        <th className="p-3">Method</th>
+                        <th className="p-3">Payment Reference</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {orders
+                        .filter((o) => o.paymentStatus !== "Awaiting Payment" || o.paymentReference)
+                        .map((o) => (
+                          <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 font-mono font-bold text-blue-600">
+                              {o.orderNumber}
+                            </td>
+                            <td className="p-3">
+                              <span className="font-bold text-slate-900 block">{o.customerName}</span>
+                              <span className="text-[11px] text-slate-400">{o.customerMobile}</span>
+                            </td>
+                            <td className="p-3 font-black text-slate-900">
+                              {formatINR(o.totalAmount)}
+                            </td>
+                            <td className="p-3">
+                              <span className="px-2 py-0.5 rounded bg-slate-100 font-bold text-[10px] text-slate-700">
+                                {o.paymentMethod === "RAZORPAY" ? "Razorpay" : o.paymentMethod}
+                              </span>
+                            </td>
+                            <td className="p-3 font-mono text-[11px] text-slate-700">
+                              {o.razorpayPaymentId || o.paymentReference || "N/A"}
+                            </td>
+                            <td className="p-3">
+                              {o.paymentStatus === "Verified" ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                  Verified
+                                </span>
+                              ) : o.paymentStatus === "Refunded" ? (
+                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[10px]">
+                                  Refunded ({formatINR(o.refundAmount || o.totalAmount)})
+                                </span>
+                              ) : o.paymentStatus === "Partially Refunded" ? (
+                                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[10px]">
+                                  Part-Refunded ({formatINR(o.refundAmount || 0)})
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">
+                                  {o.paymentStatus}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              {o.paymentStatus === "Verified" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenRefundModal(o)}
+                                  className="py-1 px-2.5 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold inline-flex items-center gap-1 transition-all active:scale-95"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  <span>Issue Refund</span>
+                                </button>
+                              )}
+                              {(o.paymentStatus === "Refunded" || o.paymentStatus === "Partially Refunded") && (
+                                <span className="text-[11px] font-mono text-purple-600 block">
+                                  {o.refundId || "Processed"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Verified Transactions History Table */}
-          <div className="mt-8">
-            <h3 className="text-sm font-bold text-slate-900 mb-3">Verified Transaction History</h3>
-            <div className="bg-white/90 rounded-2xl border border-slate-200 overflow-hidden text-xs">
-              <table className="w-full text-left divide-y divide-slate-100">
-                <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
-                  <tr>
-                    <th className="p-3">Order #</th>
-                    <th className="p-3">Customer</th>
-                    <th className="p-3">Amount</th>
-                    <th className="p-3">UTR Reference</th>
-                    <th className="p-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {verifiedOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-50">
-                      <td className="p-3 font-mono font-bold text-blue-600">{o.orderNumber}</td>
-                      <td className="p-3 font-semibold">{o.customerName}</td>
-                      <td className="p-3 font-bold text-slate-900">{formatINR(o.totalAmount)}</td>
-                      <td className="p-3 font-mono text-slate-600">{o.paymentReference || "N/A"}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                          Verified
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* SUBTAB 2: RAZORPAY SETTLEMENTS & PAYOUTS */}
+          {paymentsSubTab === "settlements" && (
+            <div className="space-y-4">
+              <div className="p-4 bg-gradient-to-r from-blue-900 to-indigo-900 rounded-2xl text-white flex items-center justify-between">
+                <div>
+                  <span className="text-xs text-blue-200 uppercase font-bold tracking-wider">
+                    Store Payout Account
+                  </span>
+                  <h3 className="text-lg font-black">Axis Bank Current A/C (****7890)</h3>
+                  <p className="text-xs text-blue-200">
+                    Beneficiary Entity: Vasavi Enterprises • Direct automated settlements (T+1)
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-400/30">
+                  Auto-Settlement Active
+                </span>
+              </div>
+
+              <div className="bg-white/95 rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100">
+                  <h3 className="font-bold text-xs sm:text-sm text-slate-900">
+                    Settlement Batches & Bank Transfers
+                  </h3>
+                </div>
+
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left divide-y divide-slate-100 text-xs min-w-[650px]">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
+                      <tr>
+                        <th className="p-3">Settlement ID</th>
+                        <th className="p-3">Gross Amount</th>
+                        <th className="p-3">Gateway Fee (2%)</th>
+                        <th className="p-3">GST (18%)</th>
+                        <th className="p-3">Net Credited</th>
+                        <th className="p-3">Bank UTR</th>
+                        <th className="p-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {settlementsList.map((setl) => (
+                        <tr key={setl.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-3 font-mono font-bold text-blue-600">{setl.id}</td>
+                          <td className="p-3 font-semibold text-slate-800">
+                            {formatINR(setl.amount)}
+                          </td>
+                          <td className="p-3 text-slate-500">{formatINR(setl.fees)}</td>
+                          <td className="p-3 text-slate-500">{formatINR(setl.tax)}</td>
+                          <td className="p-3 font-black text-emerald-700">
+                            {formatINR(setl.netAmount)}
+                          </td>
+                          <td className="p-3 font-mono text-[11px] text-slate-600">
+                            {setl.utr || "CMS" + Math.floor(100000000000 + Math.random() * 900000000000)}
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                              {setl.status === "settled" ? "Settled to Bank" : setl.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* SUBTAB 3: MANUAL UTR VERIFICATION DESK */}
+          {paymentsSubTab === "pending_utr" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Manual Verification Queue ({pendingPayments.length} Pending)
+                </h3>
+              </div>
+
+              {pendingPayments.length === 0 ? (
+                <div className="p-10 text-center bg-white/90 rounded-2xl border border-slate-200 text-xs text-slate-500">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
+                  All customer manual payments have been verified! No pending UTR submissions.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {pendingPayments.map((order) => (
+                    <div
+                      key={order.id}
+                      className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div>
+                          <span className="font-mono text-xs font-bold text-blue-600">
+                            {order.orderNumber}
+                          </span>
+                          <p className="text-xs font-bold text-slate-900">{order.customerName}</p>
+                        </div>
+                        <span className="text-base font-black text-slate-900">
+                          {formatINR(order.totalAmount)}
+                        </span>
+                      </div>
+
+                      <div className="bg-amber-50/80 p-3 rounded-xl border border-amber-200/60 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Method:</span>
+                          <span className="font-bold text-slate-800">{order.paymentMethod}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Submitted UTR:</span>
+                          <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-amber-200">
+                            {order.paymentReference || "N/A"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {order.paymentEvidenceUrl && (
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-500 block mb-1">
+                            Receipt Proof:
+                          </span>
+                          <a
+                            href={order.paymentEvidenceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-block"
+                          >
+                            <Image width={640} height={640} unoptimized
+                              src={order.paymentEvidenceUrl}
+                              alt="Payment Receipt"
+                              className="h-16 w-24 object-cover rounded-lg border border-slate-200 hover:scale-105 transition-transform"
+                            />
+                          </a>
+                        </div>
+                      )}
+
+                      <div className="flex items-center space-x-2 pt-2">
+                        <button
+                          onClick={() => handleVerify(order.id)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-1 shadow-sm"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span>Verify & Confirm</span>
+                        </button>
+                        <button
+                          onClick={() => setRejectOrderId(order.id)}
+                          className="flex-1 py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold text-xs border border-rose-200 flex items-center justify-center space-x-1"
+                        >
+                          <XCircle className="h-4 w-4" />
+                          <span>Reject with Reason</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* RAZORPAY REFUND MODAL DIALOG */}
+          {refundModalOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <RotateCcw className="h-5 w-5 text-purple-600" />
+                    <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
+                      Process Razorpay Refund
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setRefundModalOrder(null)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200/80 text-xs text-purple-900 space-y-1">
+                  <p>
+                    <strong>Order:</strong> {refundModalOrder.orderNumber} ({refundModalOrder.customerName})
+                  </p>
+                  <p>
+                    <strong>Original Paid:</strong> {formatINR(refundModalOrder.totalAmount)}
+                  </p>
+                  <p>
+                    <strong>Razorpay Payment ID:</strong>{" "}
+                    <code className="font-mono">{refundModalOrder.razorpayPaymentId || refundModalOrder.paymentReference}</code>
+                  </p>
+                </div>
+
+                <form onSubmit={handleConfirmRefund} className="space-y-3 text-xs">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Refund Amount (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      max={refundModalOrder.totalAmount}
+                      value={refundAmountInput}
+                      onChange={(e) => setRefundAmountInput(Number(e.target.value))}
+                      className="w-full p-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-900 focus:ring-2 focus:ring-purple-500/20"
+                    />
+                    <span className="text-[11px] text-slate-400 mt-1 block">
+                      Max refundable: {formatINR(refundModalOrder.totalAmount)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">
+                      Reason for Refund *
+                    </label>
+                    <textarea
+                      required
+                      rows={2}
+                      value={refundReasonInput}
+                      onChange={(e) => setRefundReasonInput(e.target.value)}
+                      placeholder="e.g. Customer cancelled order / Item returned"
+                      className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-purple-500/20"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={isProcessingRefund}
+                      className="flex-1 py-3 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-500/20 flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-60"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {isProcessingRefund
+                        ? "Initiating with Razorpay..."
+                        : `Confirm Refund of ${formatINR(refundAmountInput)}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRefundModalOrder(null)}
+                      className="py-3 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold text-xs hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1221,7 +1984,7 @@ export default function AdminDashboardPage() {
               >
                 <div>
                   <div className="flex items-center space-x-3 mb-2">
-                    <img
+                    <Image width={640} height={640} unoptimized
                       src={p.images[0]}
                       alt={p.productName}
                       className="h-12 w-12 rounded-lg object-contain bg-slate-50 border border-slate-100"
@@ -1238,19 +2001,27 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2 pt-2 border-t border-slate-100 mt-2">
+                <div className="flex items-center space-x-1.5 pt-2 border-t border-slate-100 mt-2">
+                  <button
+                    onClick={() => handleOpenEditProduct(p)}
+                    className="py-1 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-[11px] flex items-center space-x-1 transition-colors"
+                    title="Edit product details & images"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
                   <button
                     onClick={() => {
                       setAdjustProductId(p.id);
                       setAdjustNewQty(p.stockQuantity);
                     }}
-                    className="flex-1 py-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px]"
+                    className="flex-1 py-1 px-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition-colors"
                   >
                     Adjust Stock
                   </button>
                   <button
-                    onClick={() => deleteProduct(p.id)}
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                    onClick={() => setProductToDelete(p)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                     title="Delete product"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1287,7 +2058,7 @@ export default function AdminDashboardPage() {
                 className="bg-white/90 rounded-2xl p-4 border border-slate-200 shadow-sm flex items-center justify-between"
               >
                 <div className="flex items-center space-x-3">
-                  <img
+                  <Image width={640} height={640} unoptimized
                     src={c.image}
                     alt={c.name}
                     className="h-12 w-12 rounded-xl object-cover border border-slate-200"
@@ -1359,59 +2130,185 @@ export default function AdminDashboardPage() {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 8: HOMEPAGE LAYOUT & LIVE PREVIEW */}
+      {/* TAB 8: HOMEPAGE CONTAINER & BLOCK LAYOUT (WORDPRESS STYLE) */}
       {/* ========================================================= */}
       {activeTab === "layout" && (
         <div className="space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Homepage Module Layout & Sequence</h2>
-            <p className="text-xs text-slate-500">Reorder cards and sections to design the customer homepage flow</p>
+          <div className="bg-white/90 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center space-x-2">
+                <Layout className="h-5 w-5 text-blue-600" />
+                <h2 className="text-base font-bold text-slate-900">Homepage Container Blocks & Layout</h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Drag and drop container blocks like WordPress Gutenberg editor to control section sequence and visibility on the storefront.
+              </p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleResetLayoutToDefault}
+                className="py-1.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center space-x-1.5 transition-colors"
+                title="Restore default 5 homepage blocks"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                <span>Reset to Default</span>
+              </button>
+              <Link
+                href="/"
+                target="_blank"
+                className="py-1.5 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold flex items-center space-x-1.5 transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5 text-blue-600" />
+                <span>View Storefront</span>
+              </Link>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            {homepageSections.map((sec, idx) => (
-              <div
-                key={sec.id}
-                className="p-3.5 rounded-2xl bg-white/90 border border-slate-200 shadow-sm flex items-center justify-between"
+          {homepageSections.length === 0 ? (
+            <div className="bg-white/90 rounded-2xl p-8 border border-slate-200 text-center space-y-3">
+              <Layout className="h-10 w-10 text-slate-300 mx-auto" />
+              <h3 className="font-bold text-slate-800 text-sm">No containers currently configured</h3>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Your homepage layout is currently blank. Click below to instantly initialize the 5 standard storefront container blocks.
+              </p>
+              <button
+                onClick={handleResetLayoutToDefault}
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs shadow-md shadow-blue-500/20"
               >
-                <div className="flex items-center space-x-3">
-                  <span className="h-7 w-7 rounded-lg bg-slate-100 text-slate-700 font-extrabold text-xs flex items-center justify-center">
-                    {sec.order}
-                  </span>
-                  <div>
-                    <h4 className="font-bold text-xs text-slate-900">{sec.title}</h4>
-                    <p className="text-[10px] text-slate-400 font-mono">{sec.type}</p>
-                  </div>
-                </div>
+                Initialize Standard Layout
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {homepageSections.map((sec, idx) => {
+                const isBeingDragged = draggedSectionIndex === idx;
+                const isDragOver = dragOverSectionIndex === idx;
 
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => toggleSectionEnabled(sec.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
-                      sec.enabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-500"
+                return (
+                  <div
+                    key={sec.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={() => handleDrop(idx)}
+                    className={`p-4 rounded-2xl bg-white/95 border transition-all select-none shadow-sm ${
+                      isBeingDragged
+                        ? "opacity-40 border-blue-400 scale-[0.99] bg-blue-50/50"
+                        : isDragOver
+                        ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/30"
+                        : "border-slate-200/90 hover:border-slate-300 hover:shadow-md"
                     }`}
                   >
-                    {sec.enabled ? "Enabled" : "Hidden"}
-                  </button>
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      {/* Left Block Header & Grip */}
+                      <div className="flex items-center space-x-3">
+                        <div
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-grab active:cursor-grabbing shrink-0"
+                          title="Drag to reorder section"
+                        >
+                          <GripVertical className="h-5 w-5" />
+                        </div>
 
-                  <button
-                    disabled={idx === 0}
-                    onClick={() => moveSection(idx, "up")}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30"
-                  >
-                    <MoveUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    disabled={idx === homepageSections.length - 1}
-                    onClick={() => moveSection(idx, "down")}
-                    className="p-1.5 rounded-lg border border-slate-200 text-slate-600 disabled:opacity-30"
-                  >
-                    <MoveDown className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                        <span className="h-8 w-8 rounded-xl bg-slate-100 text-slate-700 font-black text-xs flex items-center justify-center shrink-0 border border-slate-200">
+                          #{sec.order}
+                        </span>
+
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h4 className="font-bold text-sm text-slate-900">{sec.title}</h4>
+                            <span className="text-[10px] font-mono uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-semibold border border-slate-200/60">
+                              {sec.type}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {sec.type === "hero_banner" && "Top sliding promotional banners carousel & headline offers"}
+                            {sec.type === "categories" && "Horizontal interactive circular department & category strip"}
+                            {sec.type === "best_sellers" && "Top-rated gadgets & highest velocity customer favorites"}
+                            {sec.type === "featured_deals" && "Full searchable catalog grid with brand & in-stock filters"}
+                            {sec.type === "trust_badges" && "Official store trust, zero-fee direct UPI & warranty assurance banner"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right Block Controls */}
+                      <div className="flex items-center space-x-2 self-end md:self-auto">
+                        <button
+                          onClick={() => toggleSectionEnabled(sec.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                            sec.enabled
+                              ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-800"
+                              : "bg-slate-200 hover:bg-slate-300 text-slate-600"
+                          }`}
+                        >
+                          {sec.enabled ? "Enabled" : "Hidden"}
+                        </button>
+
+                        <button
+                          disabled={idx === 0}
+                          onClick={() => moveSection(idx, "up")}
+                          className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 transition-colors"
+                          title="Move Up"
+                        >
+                          <MoveUp className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          disabled={idx === homepageSections.length - 1}
+                          onClick={() => moveSection(idx, "down")}
+                          className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 transition-colors"
+                          title="Move Down"
+                        >
+                          <MoveDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Block Miniature Wireframe Mockup */}
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center space-x-2 text-[10px] text-slate-400">
+                      <span className="font-bold text-slate-500 uppercase tracking-wider text-[9px]">Wireframe Preview:</span>
+                      {sec.type === "hero_banner" && (
+                        <div className="flex-1 flex items-center space-x-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200/60 font-mono text-[10px]">
+                          <span className="h-4 w-12 bg-blue-200 rounded"></span>
+                          <span className="h-4 flex-1 bg-slate-200 rounded"></span>
+                          <span className="h-4 w-8 bg-amber-200 rounded"></span>
+                        </div>
+                      )}
+                      {sec.type === "categories" && (
+                        <div className="flex-1 flex items-center space-x-2 bg-slate-50 p-2 rounded-xl border border-slate-200/60 font-mono text-[10px]">
+                          <span className="h-4 w-4 rounded-full bg-slate-300"></span>
+                          <span className="h-4 w-4 rounded-full bg-slate-300"></span>
+                          <span className="h-4 w-4 rounded-full bg-slate-300"></span>
+                          <span className="h-4 w-4 rounded-full bg-slate-300"></span>
+                          <span className="h-4 flex-1 bg-slate-200/60 rounded"></span>
+                        </div>
+                      )}
+                      {sec.type === "best_sellers" && (
+                        <div className="flex-1 flex items-center space-x-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200/60 font-mono text-[10px]">
+                          <span className="h-4 flex-1 bg-amber-100 border border-amber-300 rounded text-amber-800 text-center leading-4">★ Pick 1</span>
+                          <span className="h-4 flex-1 bg-amber-100 border border-amber-300 rounded text-amber-800 text-center leading-4">★ Pick 2</span>
+                          <span className="h-4 flex-1 bg-amber-100 border border-amber-300 rounded text-amber-800 text-center leading-4">★ Pick 3</span>
+                        </div>
+                      )}
+                      {sec.type === "featured_deals" && (
+                        <div className="flex-1 flex items-center space-x-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200/60 font-mono text-[10px]">
+                          <span className="h-4 w-16 bg-blue-600/20 rounded"></span>
+                          <span className="h-4 flex-1 bg-slate-200 rounded"></span>
+                          <span className="h-4 flex-1 bg-slate-200 rounded"></span>
+                        </div>
+                      )}
+                      {sec.type === "trust_badges" && (
+                        <div className="flex-1 flex items-center space-x-1.5 bg-slate-50 p-2 rounded-xl border border-slate-200/60 font-mono text-[10px]">
+                          <span className="h-4 w-6 bg-blue-600 rounded"></span>
+                          <span className="h-4 flex-1 bg-blue-50 border border-blue-200 rounded text-blue-700 text-center leading-4">Direct UPI & Razorpay Trust</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1657,6 +2554,17 @@ export default function AdminDashboardPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Product Description</label>
+                <textarea
+                  rows={3}
+                  value={newProdDesc}
+                  onChange={(e) => setNewProdDesc(e.target.value)}
+                  placeholder="Key features, condition, and warranty details"
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">MRP (₹)</label>
@@ -1697,17 +2605,31 @@ export default function AdminDashboardPage() {
                 <ProductImageUploader
                   images={newProdImages}
                   onChange={setNewProdImages}
+                  minImages={2}
+                  maxImages={10}
                 />
               </div>
 
               <div className="flex items-center space-x-2 pt-3">
-                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold">
-                  Save Product
+                <button
+                  type="submit"
+                  disabled={newProdImages.length < 2 || newProdImages.length > 10}
+                  className={`flex-1 py-2.5 rounded-xl font-bold transition-all ${
+                    newProdImages.length < 2 || newProdImages.length > 10
+                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 active:scale-[0.99]"
+                  }`}
+                >
+                  {newProdImages.length < 2
+                    ? `Save Product (Min 2 Images: currently ${newProdImages.length})`
+                    : newProdImages.length > 10
+                    ? `Save Product (Max 10 Images: currently ${newProdImages.length})`
+                    : "Save Product"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddProduct(false)}
-                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600"
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -1812,6 +2734,28 @@ export default function AdminDashboardPage() {
                     className="w-full p-2.5 rounded-xl border border-slate-200 font-mono"
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="font-semibold text-slate-700 flex items-center justify-between gap-2">
+                  Background
+                  <input
+                    type="color"
+                    value={newMarqBg}
+                    onChange={(e) => setNewMarqBg(e.target.value)}
+                    className="h-9 w-12 rounded border border-slate-200"
+                    aria-label="Announcement background color"
+                  />
+                </label>
+                <label className="font-semibold text-slate-700 flex items-center justify-between gap-2">
+                  Text color
+                  <input
+                    type="color"
+                    value={newMarqTextCol}
+                    onChange={(e) => setNewMarqTextCol(e.target.value)}
+                    className="h-9 w-12 rounded border border-slate-200"
+                    aria-label="Announcement text color"
+                  />
+                </label>
               </div>
               <div className="flex items-center space-x-2 pt-2">
                 <button type="submit" className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-bold">
@@ -1968,6 +2912,493 @@ export default function AdminDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Product Modal */}
+      {editingProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingProduct(null)} />
+          <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl z-10 border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Edit Product Details</h3>
+                <p className="text-xs text-slate-500 font-mono">{editingProduct.sku}</p>
+              </div>
+              <button
+                onClick={() => setEditingProduct(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditProductSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Product Title</label>
+                <input
+                  type="text"
+                  required
+                  value={editProdName}
+                  onChange={(e) => setEditProdName(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">SKU Code</label>
+                  <input
+                    type="text"
+                    required
+                    value={editProdSku}
+                    onChange={(e) => setEditProdSku(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Brand Name</label>
+                  <input
+                    type="text"
+                    value={editProdBrand}
+                    onChange={(e) => setEditProdBrand(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Store Category</label>
+                <select
+                  value={editProdCategory}
+                  onChange={(e) => setEditProdCategory(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-white"
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editProdDesc}
+                  onChange={(e) => setEditProdDesc(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">MRP (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editProdMrp}
+                    onChange={(e) => setEditProdMrp(Number(e.target.value))}
+                    className="w-full p-2.5 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Selling Price (₹)</label>
+                  <input
+                    type="number"
+                    required
+                    value={editProdPrice}
+                    onChange={(e) => setEditProdPrice(Number(e.target.value))}
+                    className="w-full p-2.5 rounded-xl border border-slate-200"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Stock Units</label>
+                  <input
+                    type="number"
+                    required
+                    value={editProdStock}
+                    onChange={(e) => setEditProdStock(Number(e.target.value))}
+                    className="w-full p-2.5 rounded-xl border border-slate-200"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">
+                  Product Images (Min 2, Max 10 • Drag & Drop to Reorder)
+                </label>
+                <ProductImageUploader
+                  images={editProdImages}
+                  onChange={setEditProdImages}
+                  minImages={2}
+                  maxImages={10}
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-3">
+                <button
+                  type="submit"
+                  disabled={isUpdatingProduct || editProdImages.length < 2 || editProdImages.length > 10}
+                  className={`flex-1 py-2.5 rounded-xl font-bold transition-all ${
+                    editProdImages.length < 2 || editProdImages.length > 10
+                      ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 active:scale-[0.99]"
+                  }`}
+                >
+                  {isUpdatingProduct
+                    ? "Saving Changes..."
+                    : editProdImages.length < 2
+                    ? `Save Changes (Min 2 Images: currently ${editProdImages.length})`
+                    : editProdImages.length > 10
+                    ? `Save Changes (Max 10 Images: currently ${editProdImages.length})`
+                    : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Product Deletion Warning Modal */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setProductToDelete(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl z-10 border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="h-12 w-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Confirm Product Deletion</h3>
+                <p className="text-xs text-slate-500">This item will be removed from customer view</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs flex items-center space-x-3">
+              {productToDelete.images?.[0] && (
+                <Image width={640} height={640} unoptimized
+                  src={productToDelete.images[0]}
+                  alt={productToDelete.productName}
+                  className="h-12 w-12 rounded-lg object-contain bg-white border border-slate-100"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-slate-900 truncate">{productToDelete.productName}</h4>
+                <p className="text-slate-500 text-[11px] font-mono">{productToDelete.sku} • {formatINR(productToDelete.sellingPrice)}</p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
+              <strong>Undo Available:</strong> After deleting, a floating banner will appear allowing you to <strong>undo and restore</strong> this product for <strong>60 seconds</strong>.
+            </div>
+
+            <div className="flex items-center space-x-2 pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmDeleteProduct}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition-all"
+              >
+                Yes, Delete Product
+              </button>
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors"
+              >
+                Keep Product
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating 60-Second Undo Banner */}
+      {deletedProductForUndo && undoCountdown > 0 && (
+        <aside aria-label="Undo action" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-lg px-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-slate-900 text-white rounded-2xl p-4 shadow-2xl border border-slate-800 flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-3 min-w-0">
+              <div className="h-9 w-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold truncate">
+                  Product &ldquo;{deletedProductForUndo.productName}&rdquo; deleted
+                </p>
+                <div className="flex items-center space-x-2 text-[11px] text-slate-400">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>{undoCountdown}s remaining to undo</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={handleUndoDelete}
+                className="py-1.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center space-x-1 shadow-md shadow-emerald-500/20 transition-colors"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                <span>Undo Delete</span>
+              </button>
+              <button
+                onClick={() => {
+                  setDeletedProductForUndo(null);
+                  setUndoCountdown(0);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title="Dismiss"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {/* Add New User Modal */}
+      {showAddUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowAddUser(false)} />
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl z-10 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-bold text-slate-900 text-base">Create New Store User</h3>
+              <button onClick={() => setShowAddUser(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddUserSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kumar"
+                  value={newUserFullName}
+                  onChange={(e) => setNewUserFullName(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="customer@domain.com"
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Mobile Number</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="+91 98765 43210"
+                  value={newUserMobile}
+                  onChange={(e) => setNewUserMobile(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Initial Password (Default: SatyaStores@123)</label>
+                <input
+                  type="password"
+                  placeholder="Leave empty for default SatyaStores@123"
+                  value={newUserPasswordInput}
+                  onChange={(e) => setNewUserPasswordInput(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">User Role</label>
+                  <select
+                    value={newUserRole}
+                    onChange={(e) => setNewUserRole(e.target.value as "customer" | "admin")}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white"
+                  >
+                    <option value="customer">Customer</option>
+                    <option value="admin">Admin Manager</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Account Status</label>
+                  <select
+                    value={newUserStatus}
+                    onChange={(e) => setNewUserStatus(e.target.value as "active" | "suspended")}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white"
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-3">
+                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors">
+                  Create User Account
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddUser(false)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setEditingUser(null)} />
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl z-10 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="font-bold text-slate-900 text-base">Edit User Details</h3>
+              <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditUserSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  value={editUserFullName}
+                  onChange={(e) => setEditUserFullName(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={editUserEmail}
+                  onChange={(e) => setEditUserEmail(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 block mb-1">Mobile Number</label>
+                <input
+                  type="text"
+                  required
+                  value={editUserMobile}
+                  onChange={(e) => setEditUserMobile(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Role</label>
+                  <select
+                    disabled={editingUser.role === "owner"}
+                    value={editUserRole}
+                    onChange={(e) => setEditUserRole(e.target.value as "customer" | "admin")}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white disabled:opacity-50"
+                  >
+                    {editingUser.role === "owner" ? (
+                      <option value="owner">Store Owner</option>
+                    ) : (
+                      <>
+                        <option value="customer">Customer</option>
+                        <option value="admin">Admin Manager</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 block mb-1">Account Status</label>
+                  <select
+                    disabled={editingUser.role === "owner"}
+                    value={editUserStatus}
+                    onChange={(e) => setEditUserStatus(e.target.value as "active" | "suspended")}
+                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white disabled:opacity-50"
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 pt-3">
+                <button type="submit" className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold transition-colors">
+                  Save User Changes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setUserToDelete(null)} />
+          <div className="relative w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl z-10 border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3">
+              <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Delete User Account</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete user <strong>{userToDelete.fullName}</strong> ({userToDelete.email})?
+            </p>
+
+            <div className="flex items-center space-x-2 pt-1">
+              <button
+                type="button"
+                onClick={handleConfirmDeleteUser}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-500/20 transition-all"
+              >
+                Yes, Delete User
+              </button>
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="py-2.5 px-4 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

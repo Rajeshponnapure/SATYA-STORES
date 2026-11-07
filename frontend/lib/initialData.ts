@@ -15,7 +15,13 @@ export const initialOrders: Order[] = [];
 export const initialPromotions: Promotion[] = [];
 export const initialCoupons: Coupon[] = [];
 export const initialMarquees: MarqueeItem[] = [];
-export const initialHomepageSections: HomepageSection[] = [];
+export const initialHomepageSections: HomepageSection[] = [
+  { id: "sec-hero", type: "hero_banner", title: "Hero Carousel Banners", enabled: true, order: 1 },
+  { id: "sec-categories", type: "categories", title: "Shop by Category Grid", enabled: true, order: 2 },
+  { id: "sec-best-sellers", type: "best_sellers", title: "Best Selling Electronics", enabled: true, order: 3 },
+  { id: "sec-featured", type: "featured_deals", title: "All Electronics Catalog & Grid", enabled: true, order: 4 },
+  { id: "sec-trust", type: "trust_badges", title: "Direct UPI & Trust Banner", enabled: true, order: 5 },
+];
 
 export const initialStoreSettings: StoreSettings = {
   storeName: "Satya Stores",

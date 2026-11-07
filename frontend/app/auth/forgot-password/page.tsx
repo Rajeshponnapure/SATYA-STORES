@@ -2,10 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import {
-  Store,
   KeyRound,
   Mail,
   Lock,
@@ -21,7 +19,6 @@ import {
 import { toast } from "sonner";
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const { requestPasswordReset, resetPasswordWithOtp } = useStore();
 
   const [step, setStep] = useState<1 | 2>(1);
@@ -288,4 +285,3 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
-

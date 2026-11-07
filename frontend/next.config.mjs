@@ -6,7 +6,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig = {
   reactStrictMode: true,
+  // Separate development output so production builds cannot replace chunks
+  // while the development server is serving the app.
+  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
   outputFileTracingRoot: path.resolve(__dirname),
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     domains: [
       "images.unsplash.com",

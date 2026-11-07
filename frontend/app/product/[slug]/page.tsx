@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -8,20 +9,15 @@ import { formatINR } from "@/lib/utils";
 import {
   Star,
   ShieldCheck,
-  Truck,
-  RotateCcw,
   CheckCircle2,
   AlertCircle,
   ShoppingCart,
   Zap,
   ChevronRight,
-  CreditCard,
-  QrCode,
   Heart,
   MessageSquarePlus,
   Send,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Review } from "@/types";
 
 export default function ProductDetailPage() {
@@ -34,7 +30,6 @@ export default function ProductDetailPage() {
     addToCart,
     favorites,
     toggleFavorite,
-    currentUser,
     submitReview,
     fetchProductReviews,
   } = useStore();
@@ -135,7 +130,7 @@ export default function ProductDetailPage() {
         {/* Left: Gallery (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="glass-card rounded-3xl p-6 border border-slate-200/80 aspect-square flex items-center justify-center overflow-hidden relative shadow-sm">
-            <img
+            <Image width={640} height={640} unoptimized
               src={product.images[selectedImageIndex] || product.images[0]}
               alt={product.productName}
               className="max-h-full max-w-full object-contain transition-all duration-300"
@@ -172,7 +167,7 @@ export default function ProductDetailPage() {
                       : "border-slate-200 hover:border-slate-300 opacity-70 hover:opacity-100"
                   }`}
                 >
-                  <img src={img} alt="" className="h-full w-full object-contain" />
+                  <Image width={640} height={640} unoptimized src={img} alt="" className="h-full w-full object-contain" />
                 </button>
               ))}
             </div>
@@ -219,7 +214,7 @@ export default function ProductDetailPage() {
           </div>
 
           {/* Pricing & Stock Status */}
-          <div className="p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
+          <div className="relative p-4 sm:p-5 rounded-2xl bg-white/90 border border-slate-200/80 shadow-sm space-y-2">
             <div className="flex items-baseline gap-3">
               <span className="text-3xl font-black text-slate-900">
                 {formatINR(activePrice)}
@@ -548,4 +543,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-

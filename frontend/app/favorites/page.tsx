@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
@@ -7,7 +8,7 @@ import { formatINR } from "@/lib/utils";
 import { Heart, ShoppingCart, Trash2, ArrowLeft, Store, Star } from "lucide-react";
 
 export default function FavoritesPage() {
-  const { favorites, products, toggleFavorite, addToCart } = useStore();
+  const { favorites, products, toggleFavorite, addToCart, isLoadingBackend } = useStore();
 
   const favoriteProducts = products.filter((p) => favorites.includes(p.id));
 
@@ -36,7 +37,11 @@ export default function FavoritesPage() {
         </Link>
       </div>
 
-      {favoriteProducts.length === 0 ? (
+      {isLoadingBackend && favoriteProducts.length === 0 ? (
+        <div role="status" aria-live="polite" className="glass-card rounded-3xl p-8 text-center border border-slate-200 text-sm font-semibold text-slate-500">
+          Loading your saved items…
+        </div>
+      ) : favoriteProducts.length === 0 ? (
         <div className="p-12 text-center bg-white/90 backdrop-blur-md rounded-3xl border border-slate-200 shadow-sm max-w-md mx-auto my-12">
           <div className="h-16 w-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Heart className="h-8 w-8" />
@@ -68,7 +73,7 @@ export default function FavoritesPage() {
                 <div>
                   {/* Image & Wishlist remove button */}
                   <div className="relative aspect-square rounded-xl overflow-hidden bg-slate-50 mb-3 border border-slate-100">
-                    <img
+                    <Image width={640} height={640} unoptimized
                       src={product.images[0]}
                       alt={product.productName}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -139,4 +144,3 @@ export default function FavoritesPage() {
     </div>
   );
 }
-

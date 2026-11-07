@@ -9,7 +9,6 @@ import {
   StoreSettings,
   User,
   Promotion,
-  InventoryMovement,
   OrderStatus,
   DeliveryStatus,
   Coupon,
@@ -17,6 +16,7 @@ import {
   Review,
   HomepageSection,
   AdminProfile,
+  RazorpaySettlement,
 } from "@/types";
 import {
   initialProducts,
@@ -29,6 +29,25 @@ import {
   initialHomepageSections,
 } from "@/lib/initialData";
 import { toast } from "sonner";
+
+interface RazorpayPaymentResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayFailureResponse {
+  error?: { description?: string };
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      on: (event: string, callback: (response: RazorpayFailureResponse) => void) => void;
+      open: () => void;
+    };
+  }
+}
 
 interface StoreContextType {
   products: Product[];
@@ -44,7 +63,6 @@ interface StoreContextType {
   discountAmount: number;
   marquees: MarqueeItem[];
   homepageSections: HomepageSection[];
-  inventoryMovements: InventoryMovement[];
   isLoadingBackend: boolean;
 
   // Cart Actions
@@ -66,9 +84,12 @@ interface StoreContextType {
     city: string;
     state: string;
     postalCode: string;
-    paymentMethod: "UPI" | "BANK_TRANSFER";
+    paymentMethod: "RAZORPAY" | "UPI" | "BANK_TRANSFER";
   }) => Promise<Order | null>;
   submitPaymentDetails: (orderId: string, utr: string, evidenceUrl?: string) => Promise<boolean>;
+  initiateRazorpayPayment: (order: Order) => Promise<{ success: boolean; error?: string }>;
+  processRefund: (orderId: string, amount?: number, reason?: string) => Promise<{ success: boolean; error?: string }>;
+  fetchSettlements: () => Promise<RazorpaySettlement[]>;
 
   // Customer Auth & Profile
   loginCustomer: (emailOrPhone: string, passwordAttempt: string) => Promise<{ success: boolean; error?: string }>;
@@ -86,10 +107,31 @@ interface StoreContextType {
   adminLogout: () => Promise<void>;
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
+  adminCreateUser: (userData: {
+    fullName: string;
+    email: string;
+    mobileNumber: string;
+    password?: string;
+    role?: "customer" | "admin";
+    accountStatus?: "active" | "suspended";
+  }) => Promise<boolean>;
+  adminUpdateUser: (
+    id: string,
+    updates: Partial<{
+      fullName: string;
+      email: string;
+      mobileNumber: string;
+      role: "customer" | "admin";
+      accountStatus: "active" | "suspended";
+    }>
+  ) => Promise<boolean>;
+  adminDeleteUser: (id: string) => Promise<boolean>;
   adminUpdateUserPassword: (userId: string, newPass: string) => Promise<boolean>;
   adminProfile: AdminProfile | null;
   fetchAdminProfile: () => Promise<AdminProfile | null>;
   updateAdminProfile: (updates: Partial<AdminProfile>) => Promise<boolean>;
+  fetchAdmin2faSetup: () => Promise<{ success: boolean; secret: string; otpauthUri: string; provider: string } | null>;
+  verifyAdmin2faCode: (code: string) => Promise<{ success: boolean; valid: boolean; method?: string; error?: string }>;
   generateAdmin2fa: () => Promise<{ success: boolean; otp?: string; message?: string }>;
   adminChangePasswordWith2FA: (currentPassword: string, newPassword: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
   uploadImage: (fileName: string, fileData: string) => Promise<{ success: boolean; url?: string; error?: string }>;
@@ -98,6 +140,7 @@ interface StoreContextType {
   addProduct: (product: Omit<Product, "id">) => Promise<boolean>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<boolean>;
   deleteProduct: (id: string) => Promise<boolean>;
+  restoreProduct: (id: string) => Promise<boolean>;
   addCategory: (category: Omit<Category, "id">) => Promise<boolean>;
   deleteCategory: (id: string) => Promise<boolean>;
   verifyPayment: (orderId: string) => Promise<boolean>;
@@ -123,7 +166,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<StoreSettings>(initialStoreSettings);
   const [marquees, setMarquees] = useState<MarqueeItem[]>(initialMarquees);
   const [homepageSections, setHomepageSections] = useState<HomepageSection[]>(initialHomepageSections);
-  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
   const [isLoadingBackend, setIsLoadingBackend] = useState<boolean>(true);
 
   // User State
@@ -373,7 +415,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     city: string;
     state: string;
     postalCode: string;
-    paymentMethod: "UPI" | "BANK_TRANSFER";
+    paymentMethod: "RAZORPAY" | "UPI" | "BANK_TRANSFER";
   }): Promise<Order | null> => {
     if (cart.length === 0) {
       toast.error("Your cart is empty");
@@ -514,6 +556,164 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   // ==========================================
+  // RAZORPAY PAYMENT GATEWAY & REFUND ACTIONS
+  // ==========================================
+  const initiateRazorpayPayment = async (
+    order: Order
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // 1. Ensure Razorpay Checkout script is loaded
+      const loadRazorpayScript = (): Promise<boolean> => {
+        return new Promise((resolve) => {
+          if (window.Razorpay) return resolve(true);
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve(true);
+          script.onerror = () => resolve(false);
+          document.body.appendChild(script);
+        });
+      };
+
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        toast.error("Could not load Razorpay payment gateway. Please check internet connection.");
+        return { success: false, error: "Razorpay script failed to load" };
+      }
+
+      // 2. Create Razorpay order on backend
+      const res = await fetch(`/api/orders/${order.id}/razorpay/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success || !data.razorpayOrder) {
+        toast.error(data.error || "Failed to initialize Razorpay transaction.");
+        return { success: false, error: data.error };
+      }
+
+      const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_satyaStore123";
+
+      // 3. Open Razorpay payment modal
+      return new Promise((resolve) => {
+        const options = {
+          key: keyId,
+          amount: data.razorpayOrder.amount,
+          currency: data.razorpayOrder.currency || "INR",
+          name: "Satya Stores",
+          description: `Order #${order.orderNumber} Payment`,
+          order_id: data.razorpayOrder.id,
+          image: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=200&q=80",
+          prefill: {
+            name: order.customerName || currentUser?.fullName || "",
+            email: order.customerEmail || currentUser?.email || "customer@example.com",
+            contact: order.customerMobile || currentUser?.mobileNumber || "",
+          },
+          theme: {
+            color: "#2563EB",
+          },
+          modal: {
+            ondismiss: function () {
+              toast.info("Payment window closed. You can complete payment anytime from your account.");
+              resolve({ success: false, error: "Payment dismissed by user" });
+            },
+          },
+          handler: async function (response: RazorpayPaymentResponse) {
+            try {
+              toast.loading("Verifying payment with bank...", { id: "rzp-verify" });
+              const verifyRes = await fetch(`/api/orders/${order.id}/razorpay/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                }),
+              });
+              const verifyData = await verifyRes.json();
+              toast.dismiss("rzp-verify");
+
+              if (verifyRes.ok && verifyData.success) {
+                toast.success("Payment verified! Your order is officially confirmed.");
+                setOrders((prev) =>
+                  prev.map((o) => (o.id === order.id ? verifyData.order : o))
+                );
+                refreshBackendData();
+                resolve({ success: true });
+              } else {
+                toast.error(verifyData.error || "Payment verification could not be confirmed");
+                resolve({ success: false, error: verifyData.error });
+              }
+            } catch (err: unknown) {
+              toast.dismiss("rzp-verify");
+              const message = err instanceof Error ? err.message : "Error validating payment";
+              toast.error(message);
+              resolve({ success: false, error: message });
+            }
+          },
+        };
+
+        if (!window.Razorpay) {
+          resolve({ success: false, error: "Razorpay checkout is unavailable" });
+          return;
+        }
+        const rzp = new window.Razorpay(options);
+        rzp.on("payment.failed", function (failResponse: RazorpayFailureResponse) {
+          toast.error(failResponse.error?.description || "Payment failed or declined by bank.");
+          resolve({ success: false, error: failResponse.error?.description });
+        });
+        rzp.open();
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to initialize Razorpay checkout";
+      toast.error(message);
+      return { success: false, error: message };
+    }
+  };
+
+  const processRefund = async (
+    orderId: string,
+    amount?: number,
+    reason?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to process refund");
+        return { success: false, error: data.error };
+      }
+      toast.success(
+        `Refund of ₹${(data.order.refundAmount || 0).toLocaleString()} successfully processed via Razorpay!`
+      );
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? data.order : o)));
+      refreshBackendData();
+      return { success: true };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error processing refund";
+      toast.error(message);
+      return { success: false, error: message };
+    }
+  };
+
+  const fetchSettlements = async (): Promise<RazorpaySettlement[]> => {
+    try {
+      const res = await fetch("/api/admin/settlements");
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.settlements;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  };
+
+  // ==========================================
   // CUSTOMER AUTH
   // ==========================================
   const loginCustomer = async (emailOrPhone: string, passwordAttempt: string) => {
@@ -589,12 +789,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         toast.success("Profile updated successfully!");
         return true;
       }
+      toast.error(data.error || "Profile could not be saved to the database.");
+      return false;
     } catch {}
-    const updated = { ...currentUser, ...updates };
-    setCurrentUser(updated);
-    localStorage.setItem("satya_customer_user", JSON.stringify(updated));
-    toast.success("Profile saved locally!");
-    return true;
+    toast.error("Profile could not be saved to the database. Check your connection and try again.");
+    return false;
   };
 
   const toggleFavorite = async (productId: string) => {
@@ -761,6 +960,120 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const adminCreateUser = async (userData: {
+    fullName: string;
+    email: string;
+    mobileNumber: string;
+    password?: string;
+    role?: "customer" | "admin";
+    accountStatus?: "active" | "suspended";
+  }): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(userData),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to create user");
+        return false;
+      }
+      toast.success("User created successfully!");
+      if (data.user) {
+        setAdminUsers((prev) => [data.user, ...prev]);
+      }
+      return true;
+    } catch {
+      toast.error("Network error creating user");
+      return false;
+    }
+  };
+
+  const adminUpdateUser = async (
+    id: string,
+    updates: Partial<{
+      fullName: string;
+      email: string;
+      mobileNumber: string;
+      role: "customer" | "admin";
+      accountStatus: "active" | "suspended";
+    }>
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to update user");
+        return false;
+      }
+      toast.success("User details updated successfully!");
+      setAdminUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...updates } : u)));
+      return true;
+    } catch {
+      toast.error("Network error updating user");
+      return false;
+    }
+  };
+
+  const adminDeleteUser = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to delete user");
+        return false;
+      }
+      toast.success("User removed successfully!");
+      setAdminUsers((prev) => prev.filter((u) => u.id !== id));
+      return true;
+    } catch {
+      toast.error("Network error deleting user");
+      return false;
+    }
+  };
+
+  const fetchAdmin2faSetup = async (): Promise<{
+    success: boolean;
+    secret: string;
+    otpauthUri: string;
+    provider: string;
+  } | null> => {
+    try {
+      const res = await fetch("/api/admin/2fa-setup");
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data;
+      }
+    } catch {}
+    return null;
+  };
+
+  const verifyAdmin2faCode = async (code: string): Promise<{
+    success: boolean;
+    valid: boolean;
+    method?: string;
+    error?: string;
+  }> => {
+    try {
+      const res = await fetch("/api/admin/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      return data;
+    } catch {
+      return { success: false, valid: false, error: "Network error verifying 2FA" };
+    }
+  };
+
   const fetchAdminProfile = useCallback(async (): Promise<AdminProfile | null> => {
     try {
       const res = await fetch("/api/admin/profile");
@@ -857,6 +1170,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // ADMIN CATALOG & CMS ACTIONS
   // ==========================================
   const addProduct = async (productData: Omit<Product, "id">): Promise<boolean> => {
+    if (!productData.images || productData.images.length < 2) {
+      toast.error("Please provide at least 2 images for the product (Maximum: 10).");
+      return false;
+    }
+    if (productData.images.length > 10) {
+      toast.error("A product cannot have more than 10 images.");
+      return false;
+    }
+
     try {
       const res = await fetch("/api/products", {
         method: "POST",
@@ -864,40 +1186,93 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify(productData),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        setProducts((prev) => [data.product, ...prev]);
-        toast.success(`Product "${productData.productName}" added!`);
-        return true;
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to add product to catalog.");
+        return false;
       }
-    } catch {}
-    const newProd = { ...productData, id: `prod-${Date.now()}` } as Product;
-    setProducts((prev) => [newProd, ...prev]);
-    toast.success(`Product added locally!`);
-    return true;
+
+      setProducts((prev) => [data.product, ...prev]);
+      toast.success(`Product "${productData.productName}" added!`);
+      return true;
+    } catch {
+      const newProd = { ...productData, id: `prod-${Date.now()}` } as Product;
+      setProducts((prev) => [newProd, ...prev]);
+      toast.success(`Product added locally!`);
+      return true;
+    }
   };
 
   const updateProduct = async (id: string, updates: Partial<Product>): Promise<boolean> => {
+    if (updates.images !== undefined) {
+      if (!Array.isArray(updates.images) || updates.images.length < 2) {
+        toast.error("Product image validation failed: Minimum 2 images are required.");
+        return false;
+      }
+      if (updates.images.length > 10) {
+        toast.error("Product image validation failed: Maximum 10 images are allowed.");
+        return false;
+      }
+    }
+
     try {
-      await fetch(`/api/products/${id}`, {
+      const res = await fetch(`/api/products/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to update product");
+        return false;
+      }
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+      toast.success("Product updated successfully!");
       await refreshBackendData();
-    } catch {}
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
-    toast.success("Product updated successfully");
-    return true;
+      return true;
+    } catch {
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
+      toast.success("Product updated locally!");
+      return true;
+    }
   };
 
   const deleteProduct = async (id: string): Promise<boolean> => {
     try {
-      await fetch(`/api/products/${id}`, { method: "DELETE" });
-      await refreshBackendData();
-    } catch {}
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    toast.info("Product removed from catalog");
-    return true;
+      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Failed to delete product");
+        return false;
+      }
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      return true;
+    } catch {
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      return true;
+    }
+  };
+
+  const restoreProduct = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/products/${id}/restore`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.product) {
+        setProducts((prev) => {
+          if (prev.some((p) => p.id === id)) return prev;
+          return [data.product, ...prev];
+        });
+        toast.success(`Product "${data.product.productName}" restored to catalog!`);
+        return true;
+      } else {
+        toast.error(data.error || "Unable to restore product.");
+        return false;
+      }
+    } catch {
+      toast.error("Network error restoring product");
+      return false;
+    }
   };
 
   const addCategory = async (categoryData: Omit<Category, "id">): Promise<boolean> => {
@@ -1122,7 +1497,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         discountAmount,
         marquees,
         homepageSections,
-        inventoryMovements,
         isLoadingBackend,
         addToCart,
         removeFromCart,
@@ -1134,6 +1508,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         removeCoupon,
         createOrder,
         submitPaymentDetails,
+        initiateRazorpayPayment,
+        processRefund,
+        fetchSettlements,
         loginCustomer,
         signupCustomer,
         logoutCustomer,
@@ -1147,16 +1524,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         adminLogout,
         adminUsers,
         fetchAdminUsers,
+        adminCreateUser,
+        adminUpdateUser,
+        adminDeleteUser,
         adminUpdateUserPassword,
         adminProfile,
         fetchAdminProfile,
         updateAdminProfile,
+        fetchAdmin2faSetup,
+        verifyAdmin2faCode,
         generateAdmin2fa,
         adminChangePasswordWith2FA,
         uploadImage,
         addProduct,
         updateProduct,
         deleteProduct,
+        restoreProduct,
         addCategory,
         deleteCategory,
         verifyPayment,

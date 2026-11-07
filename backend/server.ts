@@ -6,6 +6,7 @@ import path from "path";
 import { productService } from "./services/productService";
 import { orderService } from "./services/orderService";
 import { paymentService } from "./services/paymentService";
+import { razorpayService } from "./services/razorpayService";
 import { inventoryService } from "./services/inventoryService";
 import { deliveryService } from "./services/deliveryService";
 import { userService } from "./services/userService";
@@ -167,6 +168,28 @@ app.put("/api/admin/profile", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/api/admin/2fa-setup", async (_req: Request, res: Response) => {
+  try {
+    const result = await userService.getAdmin2faSetup();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/admin/verify-2fa", async (req: Request, res: Response) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, error: "Verification code is required." });
+    }
+    const result = await userService.verifyAdmin2faCode(code);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post("/api/admin/generate-2fa", async (_req: Request, res: Response) => {
   try {
     const result = await userService.generateAdmin2fa();
@@ -299,6 +322,42 @@ app.get("/api/admin/users", async (req: Request, res: Response) => {
   }
 });
 
+app.post("/api/admin/users", async (req: Request, res: Response) => {
+  try {
+    const result = await userService.adminCreateUser(req.body);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.status(201).json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put("/api/admin/users/:id", async (req: Request, res: Response) => {
+  try {
+    const result = await userService.adminUpdateUser(String(req.params.id), req.body);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete("/api/admin/users/:id", async (req: Request, res: Response) => {
+  try {
+    const result = await userService.adminDeleteUser(String(req.params.id));
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.put("/api/admin/users/:id/password", async (req: Request, res: Response) => {
   try {
     const { newPassword } = req.body;
@@ -345,6 +404,18 @@ app.put("/api/products/:id", async (req: Request, res: Response) => {
 app.delete("/api/products/:id", async (req: Request, res: Response) => {
   try {
     const result = await productService.deleteProduct(String(req.params.id));
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/products/:id/restore", async (req: Request, res: Response) => {
+  try {
+    const result = await productService.restoreProduct(String(req.params.id));
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -528,6 +599,124 @@ app.post("/api/admin/payments/reject", async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==========================================
+// RAZORPAY GATEWAY, REFUNDS & SETTLEMENTS APIs
+// ==========================================
+app.get("/api/payments/razorpay-config", (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    keyId: razorpayService.getKeyId(),
+    currency: "INR",
+    merchantName: "Satya Stores | Vasavi Enterprises",
+  });
+});
+
+app.post("/api/orders/:id/razorpay/create-order", async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.params.id);
+    const db = await getDatabase();
+    const order = db.orders.find((o) => o.id === orderId);
+
+    if (!order) {
+      return res.status(404).json({ success: false, error: "Order not found" });
+    }
+
+    const result = await razorpayService.createOrder(order.id, order.totalAmount, "INR");
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    // Persist razorpay order id on the order
+    if (result.razorpayOrder?.id) {
+      order.razorpayOrderId = result.razorpayOrder.id;
+      order.paymentMethod = "RAZORPAY";
+      order.updatedAt = new Date().toISOString();
+      await saveDatabase(db);
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/orders/:id/razorpay/verify", async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.params.id);
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body;
+
+    const result = await razorpayService.verifyPayment(
+      orderId,
+      razorpayOrderId,
+      razorpayPaymentId,
+      razorpaySignature
+    );
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/admin/orders/:id/refund", async (req: Request, res: Response) => {
+  try {
+    const orderId = String(req.params.id);
+    const { amount, reason } = req.body;
+
+    const result = await razorpayService.processRefund(orderId, amount, reason);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/admin/settlements", async (_req: Request, res: Response) => {
+  try {
+    const settlements = await razorpayService.getSettlements();
+    res.json({ success: true, settlements });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/payments/razorpay/webhook", async (req: Request, res: Response) => {
+  try {
+    const event = req.body?.event;
+    const payload = req.body?.payload;
+
+    if (event === "payment.captured" && payload?.payment?.entity) {
+      const payment = payload.payment.entity;
+      const orderId = payment.notes?.orderId;
+      if (orderId) {
+        await razorpayService.verifyPayment(
+          orderId,
+          payment.order_id,
+          payment.id,
+          "webhook_verified"
+        );
+      }
+    } else if (event === "refund.processed" && payload?.refund?.entity) {
+      const refund = payload.refund.entity;
+      const orderId = refund.notes?.orderId;
+      if (orderId) {
+        await razorpayService.processRefund(orderId, refund.amount / 100, refund.notes?.reason);
+      }
+    }
+
+    res.json({ status: "ok" });
+  } catch (err: any) {
+    res.status(500).json({ status: "error", message: err.message });
   }
 });
 

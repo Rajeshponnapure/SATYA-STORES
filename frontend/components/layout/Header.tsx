@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,11 +23,8 @@ import {
   X,
   ChevronRight,
   ChevronDown,
-  Sparkles,
   Phone,
   ShieldCheck,
-  CheckCircle2,
-  Zap,
 } from "lucide-react";
 
 export function Header() {
@@ -226,7 +224,7 @@ export function Header() {
                         onClick={() => setIsSearchOpen(false)}
                         className="flex items-center space-x-3 p-3 hover:bg-blue-50/60 transition-colors group"
                       >
-                        <img
+                        <Image width={640} height={640} unoptimized
                           src={product.images[0]}
                           alt={product.productName}
                           className="h-10 w-10 object-contain rounded-xl bg-slate-50 border border-slate-100 p-1 shrink-0 group-hover:scale-105 transition-transform"
@@ -495,8 +493,17 @@ export function Header() {
               {/* Customer Account card in drawer */}
               {currentUser ? (
                 <div className="my-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <p className="text-xs font-bold text-slate-900">{currentUser.fullName}</p>
-                  <p className="text-[11px] text-slate-500">{currentUser.email}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black ring-2 ring-white">
+                      {currentUser.profileImage ? (
+                        <Image src={currentUser.profileImage} alt={`${currentUser.fullName} profile photo`} fill sizes="44px" unoptimized className="object-cover" />
+                      ) : currentUser.fullName.charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-slate-900">{currentUser.fullName}</p>
+                      <p className="truncate text-[11px] text-slate-500">{currentUser.email}</p>
+                    </div>
+                  </div>
                   <div className="mt-2.5 flex items-center space-x-3 text-xs">
                     <Link
                       href="/account"

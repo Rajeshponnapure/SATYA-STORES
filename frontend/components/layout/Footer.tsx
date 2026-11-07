@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { ShieldCheck, Truck, RotateCcw, CreditCard, Phone, Store } from "lucide-react";
+import { ShieldCheck, Truck, CreditCard, Phone, Store } from "lucide-react";
 
 export function Footer() {
   return (

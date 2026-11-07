@@ -127,6 +127,8 @@ export const initialProducts: Product[] = [
     description: "The apex of mobile photography with 200MP Quad Telephoto AI zoom, built-in S-Pen, and Snapdragon 8 Elite Extreme Edition.",
     images: [
       "https://images.unsplash.com/photo-1610945265064-0e34e5519bbf?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1580910051074-3eb694886505?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1565849904461-04a58ad377e0?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 139999,
     sellingPrice: 128999,
@@ -167,6 +169,7 @@ export const initialProducts: Product[] = [
     description: "Speed redefined with 100W SUPERVOOC, 6000mAh Glacier Battery, Hasselblad Master Optics, and ultra-smooth 2K 120Hz display.",
     images: [
       "https://images.unsplash.com/photo-1598327105666-5b89351aff97?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 69999,
     sellingPrice: 64999,
@@ -216,6 +219,7 @@ export const initialProducts: Product[] = [
     description: "Impossibly thin and fast laptop with a stunning 15.3-inch Liquid Retina display, all-day 18-hour battery life, and MagSafe charging.",
     images: [
       "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 134900,
     sellingPrice: 124900,
@@ -256,6 +260,7 @@ export const initialProducts: Product[] = [
     description: "Crafted with CNC machined aluminum and Gorilla Glass 3. Includes dedicated Copilot key and NVIDIA GeForce RTX 4050 graphics.",
     images: [
       "https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 199990,
     sellingPrice: 179990,
@@ -297,6 +302,7 @@ export const initialProducts: Product[] = [
     description: "Self-lit OLED pixels delivering infinite contrast, 100% color fidelity, α9 AI Processor Gen7 4K, and NVIDIA G-Sync / AMD FreeSync 144Hz support.",
     images: [
       "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1509281373149-e957c6296406?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 169990,
     sellingPrice: 129990,
@@ -339,6 +345,7 @@ export const initialProducts: Product[] = [
     description: "India's trusted mixer grinder featuring the Master Chef+ Jar for chopping, slicing, atta kneading, and 3-in-1 fresh citrus juicing.",
     images: [
       "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1574269909862-7e1d70bb8078?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 11499,
     sellingPrice: 8799,
@@ -378,6 +385,7 @@ export const initialProducts: Product[] = [
     description: "Fast cooking sealing nutrients into the food. Features Indian cooking presets: Roti/Dosa, Gravy, Milk, Deep Fry, and Rice.",
     images: [
       "https://images.unsplash.com/photo-1584269600464-37b1b58a9fe7?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1556912172-45b7abe8b7e1?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 4995,
     sellingPrice: 3499,
@@ -417,6 +425,7 @@ export const initialProducts: Product[] = [
     description: "Ultra-compact Gallium Nitride (GaN) fast charger with dual USB-C and USB-A ports to fast-charge your MacBook, iPhone, and Galaxy simultaneously.",
     images: [
       "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1585338107529-13afc5f02586?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 4999,
     sellingPrice: 3699,
@@ -455,6 +464,7 @@ export const initialProducts: Product[] = [
     description: "Premium metallic finish smartwatch with Tru Sync Bluetooth Calling, Functional Crown, and 7-day battery stamina.",
     images: [
       "https://images.unsplash.com/photo-1508746829417-e6f548d8d6ed?auto=format&fit=crop&w=800&q=80",
+      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
     ],
     mrp: 7999,
     sellingPrice: 3299,

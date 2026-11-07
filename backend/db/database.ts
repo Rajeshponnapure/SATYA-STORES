@@ -122,6 +122,7 @@ function mapSupabaseUser(u: any): User {
     accountStatus: u.account_status || u.accountStatus || "active",
     favorites: Array.isArray(u.favorites) ? u.favorites : [],
     addresses: Array.isArray(u.addresses) ? u.addresses : [],
+    profileImage: u.profile_image || u.profileImage || undefined,
     createdAt: u.created_at || u.createdAt || new Date().toISOString(),
   };
 }
@@ -158,6 +159,7 @@ function mapSupabaseAdmin(a: any): AdminProfile {
     twoFactorEnabled: Boolean(a.two_factor_enabled ?? a.twoFactorEnabled ?? true),
     twoFactorMethod: a.two_factor_method || a.twoFactorMethod || "OTP_SMS_EMAIL",
     twoFactorPin: a.two_factor_pin || a.twoFactorPin || "",
+    profileImage: a.profile_image || a.profileImage || undefined,
     updatedAt: a.updated_at || a.updatedAt || new Date().toISOString(),
   };
 }
@@ -196,7 +198,7 @@ export async function getDatabase(): Promise<DatabaseSchema> {
         { data: ordData },
         { data: settingsData },
         { data: usersData, error: userErr },
-        { data: adminData },
+        { data: adminData, error: adminErr },
         { data: revData },
         { data: marqData },
       ] = await Promise.all([
@@ -209,6 +211,9 @@ export async function getDatabase(): Promise<DatabaseSchema> {
         supabase.from("reviews").select("*"),
         supabase.from("marquees").select("*"),
       ]);
+
+      if (userErr) throw userErr;
+      if (adminErr) throw adminErr;
 
       if (!prodErr && prodData) {
         const liveProducts = prodData.map(mapSupabaseProduct);
@@ -322,7 +327,7 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
       }
 
       if (data.users && data.users.length > 0) {
-        await supabase.from("users").upsert(
+        const { error: userSyncError } = await supabase.from("users").upsert(
           data.users.map((u) => ({
             id: u.id,
             full_name: u.fullName,
@@ -335,8 +340,10 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             account_status: u.accountStatus,
             favorites: u.favorites || [],
             addresses: u.addresses || [],
+            profile_image: u.profileImage || null,
           }))
         );
+        if (userSyncError) throw new Error(`Supabase user profile sync failed: ${userSyncError.message}`);
       }
 
       if (data.categories && data.categories.length > 0) {
@@ -374,7 +381,7 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
       }
 
       if (data.adminProfile) {
-        await supabase.from("admin_profile").upsert({
+        const { error: adminSyncError } = await supabase.from("admin_profile").upsert({
           id: "admin-master",
           full_name: data.adminProfile.fullName,
           email: data.adminProfile.email,
@@ -384,10 +391,13 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
           two_factor_enabled: data.adminProfile.twoFactorEnabled,
           two_factor_method: data.adminProfile.twoFactorMethod,
           two_factor_pin: data.adminProfile.twoFactorPin,
+          profile_image: data.adminProfile.profileImage || null,
         });
+        if (adminSyncError) throw new Error(`Supabase admin profile sync failed: ${adminSyncError.message}`);
       }
     } catch (e) {
       console.warn("[Database] Async sync to Supabase failed:", e);
+      throw e;
     }
   }
 }

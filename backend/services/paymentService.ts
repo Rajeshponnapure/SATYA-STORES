@@ -123,7 +123,7 @@ export const paymentService = {
   async getAllPayments(): Promise<any[]> {
     const db = await getDatabase();
     return db.orders
-      .filter((o) => o.paymentReference || o.paymentStatus !== "Awaiting Payment")
+      .filter((o) => o.paymentReference || o.paymentStatus !== "Awaiting Payment" || o.razorpayPaymentId)
       .map((o) => ({
         id: `pay-${o.id}`,
         orderId: o.id,
@@ -132,10 +132,19 @@ export const paymentService = {
         customerMobile: o.customerMobile,
         amount: o.totalAmount,
         paymentMethod: o.paymentMethod,
-        paymentReference: o.paymentReference || "N/A",
+        paymentReference: o.paymentReference || o.razorpayPaymentId || "N/A",
         evidenceImageUrl: o.paymentEvidenceUrl,
         verificationStatus: o.paymentStatus,
         rejectionReason: o.rejectionReason,
+        razorpayOrderId: o.razorpayOrderId,
+        razorpayPaymentId: o.razorpayPaymentId,
+        refundId: o.refundId,
+        refundAmount: o.refundAmount,
+        refundStatus: o.refundStatus,
+        refundReason: o.refundReason,
+        refundedAt: o.refundedAt,
+        settlementId: o.settlementId,
+        settlementStatus: o.settlementStatus,
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
       }));

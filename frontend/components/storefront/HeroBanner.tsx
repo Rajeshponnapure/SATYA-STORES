@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useStore } from "@/context/StoreContext";
@@ -28,7 +29,7 @@ export function HeroBanner() {
       <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm border border-slate-200/80 group">
         {/* Background Image with Ambient Gradient Overlay */}
         <div className="relative h-[230px] sm:h-[340px] md:h-[420px] w-full overflow-hidden">
-          <img
+          <Image width={640} height={640} unoptimized
             src={current.imageUrl}
             alt={current.title}
             className="w-full h-full object-cover object-center transform transition-transform duration-700 ease-out group-hover:scale-105"

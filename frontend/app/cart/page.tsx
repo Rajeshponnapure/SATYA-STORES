@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,10 +13,8 @@ import {
   ArrowRight,
   ShieldCheck,
   ShoppingBag,
-  ArrowLeft,
   Truck,
   Tag,
-  Check,
   X,
 } from "lucide-react";
 
@@ -32,6 +31,7 @@ export default function CartPage() {
     discountAmount,
     applyCoupon,
     removeCoupon,
+    isLoadingBackend,
   } = useStore();
 
   const [couponCode, setCouponCode] = useState("");
@@ -49,6 +49,14 @@ export default function CartPage() {
     await applyCoupon(couponCode);
     setIsApplying(false);
   };
+
+  if (cart.length === 0 && isLoadingBackend) {
+    return (
+      <div role="status" aria-live="polite" className="max-w-2xl mx-auto py-16 text-center text-sm font-semibold text-slate-500">
+        Loading your cart…
+      </div>
+    );
+  }
 
   if (cart.length === 0) {
     return (
@@ -121,7 +129,7 @@ export default function CartPage() {
               >
                 <div className="flex items-center gap-3 sm:gap-4 flex-1">
                   <div className="h-16 w-16 sm:h-20 sm:w-20 rounded-xl bg-slate-50 border border-slate-100 p-1.5 flex items-center justify-center shrink-0">
-                    <img
+                    <Image width={640} height={640} unoptimized
                       src={item.product.images[0]}
                       alt={item.product.productName}
                       className="max-h-full max-w-full object-contain"
@@ -279,7 +287,7 @@ export default function CartPage() {
               </div>
               <div className="flex justify-between">
                 <span>Payment Processing Fee</span>
-                <span className="font-bold text-emerald-600">₹0 (Direct UPI/Bank)</span>
+                <span className="font-bold text-emerald-600">₹0 (Razorpay UPI & Cards)</span>
               </div>
             </div>
 
@@ -292,19 +300,36 @@ export default function CartPage() {
 
             <button
               onClick={() => router.push("/checkout")}
-              className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition-all active:scale-95"
+              className="w-full py-3.5 sm:py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition-all active:scale-95"
             >
               Proceed to Checkout <ArrowRight className="h-4 w-4" />
             </button>
 
             <div className="pt-2 text-center text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              <span>Direct Bank & UPI Transfer with Store Verification</span>
+              <span>Razorpay 256-bit Encrypted Checkout</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Floating Sticky Mobile Checkout Bar (Visible only on mobile/tablet) */}
+      <div className="lg:hidden fixed bottom-[58px] left-0 right-0 z-30 p-2.5 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+        <div className="flex items-center justify-between gap-3 max-w-lg mx-auto">
+          <div>
+            <span className="text-[10px] text-slate-400 font-bold uppercase block">Total</span>
+            <span className="text-lg font-black text-slate-900 leading-tight">
+              {formatINR(orderTotal)}
+            </span>
+          </div>
+          <button
+            onClick={() => router.push("/checkout")}
+            className="flex-1 py-3 px-5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+          >
+            Checkout <ArrowRight className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </div>
   );
 }
-

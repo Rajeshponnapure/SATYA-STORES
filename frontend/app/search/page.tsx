@@ -10,7 +10,7 @@ import { Search, ChevronRight } from "lucide-react";
 function SearchContent() {
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
-  const { products } = useStore();
+  const { products, isLoadingBackend } = useStore();
 
   const matchingProducts = useMemo(() => {
     if (!query.trim()) return [];
@@ -40,11 +40,17 @@ function SearchContent() {
           Search Results for &ldquo;{query}&rdquo;
         </h1>
         <p className="text-xs text-slate-500">
-          Found {matchingProducts.length} matching products
+          {isLoadingBackend && query.trim()
+            ? "Searching the latest catalog…"
+            : `Found ${matchingProducts.length} matching products`}
         </p>
       </div>
 
-      {matchingProducts.length === 0 ? (
+      {isLoadingBackend && query.trim() ? (
+        <div role="status" aria-live="polite" className="glass-card rounded-3xl p-12 text-center border border-slate-200 text-sm font-semibold text-slate-500">
+          Searching products…
+        </div>
+      ) : matchingProducts.length === 0 ? (
         <div className="glass-card rounded-3xl p-12 text-center border border-slate-200">
           <Search className="h-10 w-10 text-slate-300 mx-auto mb-3" />
           <h3 className="text-base font-bold text-slate-800">No matching products found</h3>
@@ -76,4 +82,3 @@ export default function SearchPage() {
     </Suspense>
   );
 }
-

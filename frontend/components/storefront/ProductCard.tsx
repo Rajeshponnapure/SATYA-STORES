@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { Product } from "@/types";
@@ -38,7 +39,7 @@ export function ProductCard({ product }: { product: Product }) {
               href={`/product/${product.slug}`}
               className="w-full h-full flex items-center justify-center"
             >
-              <img
+              <Image width={640} height={640} unoptimized
                 src={product.images[0]}
                 alt={product.productName}
                 className="max-h-full max-w-full object-contain group-hover:scale-110 transition-transform duration-500 ease-out"

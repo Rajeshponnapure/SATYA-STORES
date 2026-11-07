@@ -1,4 +1,4 @@
-export type UserRole = "customer" | "owner";
+export type UserRole = "customer" | "owner" | "admin";
 
 export interface AdminProfile {
   id: string;
@@ -8,8 +8,10 @@ export interface AdminProfile {
   businessEntity: string;
   role: "owner";
   twoFactorEnabled: boolean;
-  twoFactorMethod: "OTP_SMS_EMAIL" | "SECURITY_PIN";
+  twoFactorMethod: "OTP_SMS_EMAIL" | "SECURITY_PIN" | "EXTERNAL_AUTHENTICATOR";
+  twoFactorSecret?: string;
   twoFactorPin?: string;
+  profileImage?: string;
   updatedAt: string;
 }
 
@@ -24,6 +26,9 @@ export interface User {
   accountStatus: "active" | "suspended";
   favorites?: string[];
   addresses?: Address[];
+  twoFactorSecret?: string;
+  twoFactorEnabled?: boolean;
+  profileImage?: string;
   createdAt: string;
 }
 
@@ -142,7 +147,8 @@ export type PaymentStatus =
   | "Verified"
   | "Rejected"
   | "Refund Pending"
-  | "Refunded";
+  | "Refunded"
+  | "Partially Refunded";
 
 export type OrderStatus =
   | "Order Created"
@@ -191,15 +197,47 @@ export interface Order {
   orderStatus: OrderStatus;
   paymentStatus: PaymentStatus;
   deliveryStatus: DeliveryStatus;
-  paymentMethod: "UPI" | "BANK_TRANSFER";
-  paymentReference?: string; // UTR
+  paymentMethod: "RAZORPAY" | "UPI" | "BANK_TRANSFER";
+  paymentReference?: string; // UTR or Razorpay Payment ID
   paymentEvidenceUrl?: string;
   rejectionReason?: string;
   manualDeliveryReference?: string; // e.g. "DTDC Consignment #7382910"
   deliveryNotes?: string;
   notes?: string;
+
+  // Razorpay Gateway fields
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+
+  // Refund tracking
+  refundId?: string;
+  refundAmount?: number;
+  refundStatus?: "pending" | "processed" | "failed";
+  refundReason?: string;
+  refundedAt?: string;
+
+  // Settlement tracking
+  settlementId?: string;
+  settlementStatus?: "pending" | "settled";
+  settledAt?: string;
+
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RazorpaySettlement {
+  id: string;
+  amount: number;
+  fees: number;
+  tax: number;
+  netAmount: number;
+  status: "settled" | "pending";
+  utr?: string;
+  bankAccount?: string;
+  orderIds: string[];
+  createdAt: string;
+  settledAt?: string;
 }
 
 export interface PaymentRecord {
@@ -208,8 +246,10 @@ export interface PaymentRecord {
   orderNumber: string;
   userId: string;
   customerName: string;
-  paymentMethod: "UPI" | "BANK_TRANSFER";
-  paymentReference: string; // UTR / Reference
+  paymentMethod: "RAZORPAY" | "UPI" | "BANK_TRANSFER";
+  paymentReference: string; // UTR / Razorpay Payment ID
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
   transactionDate: string;
   amount: number;
   evidenceImageUrl?: string;
@@ -217,6 +257,12 @@ export interface PaymentRecord {
   verifiedBy?: string;
   verifiedAt?: string;
   rejectionReason?: string;
+  refundId?: string;
+  refundAmount?: number;
+  refundStatus?: string;
+  refundReason?: string;
+  settlementId?: string;
+  settlementStatus?: string;
   submittedAt: string;
 }
 
@@ -265,4 +311,3 @@ export interface StoreSettings {
   standardShippingFee: number;
   reservationExpiryMinutes: number;
 }
-
