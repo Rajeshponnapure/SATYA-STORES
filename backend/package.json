@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Satya Stores Express & Node.js REST API Backend on Port 5000",
-  "main": "server.ts",
+  "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch dev-server.ts",
     "build": "tsc",
@@ -12,21 +12,21 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
-    "@vercel/blob": "^2.8.2",
-    "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "express-rate-limit": "^8.7.3",
-    "helmet": "^8.3.0",
-    "razorpay": "^2.9.8"
-  },
-  "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.2",
+    "@vercel/blob": "^2.8.2",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "tsx": "^4.19.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
+    "razorpay": "^2.9.8",
     "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
   },
   "overrides": {
     "zod": "^4.6.6"
