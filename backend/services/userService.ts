@@ -47,7 +47,7 @@ function base32Decode(base32: string): Buffer {
   return Buffer.from(output);
 }
 
-function verifyTOTP(token: string, secret: string, window = 1, timeStep = 30): boolean {
+function verifyTOTP(token: string, secret: string, window = 2, timeStep = 30): boolean {
   try {
     const epoch = Math.floor(Date.now() / 1000);
     const currentCounter = Math.floor(epoch / timeStep);
