@@ -59,8 +59,8 @@ export function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Hide customer header inside the admin portal, including its private entry URL.
-  if (pathname.startsWith("/admin") || pathname.startsWith("/_owner/")) {
+  // Hide customer header inside secret admin portal
+  if (pathname.startsWith("/admin")) {
     return null;
   }
 

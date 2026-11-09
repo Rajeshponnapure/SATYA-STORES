@@ -153,8 +153,6 @@ Create local environment files and keep them out of source control.
 ~~~dotenv
 NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:5000
 NEXT_PUBLIC_RAZORPAY_KEY_ID=
-# Production only: server-side private admin-entry value; never use NEXT_PUBLIC_.
-ADMIN_PORTAL_SLUG=
 ~~~
 
 The backend URL defaults to port 5000 in local development. Set it when the API is hosted elsewhere. The Razorpay key ID is only needed for Razorpay checkout.
@@ -184,7 +182,6 @@ Keep the admin-session secret, Redis URL, and Razorpay secret on the backend. Co
 ## Deploy — Vercel (frontend) + Render (backend)
 
 - **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/` session cookies keep working. Public catalog responses now carry short edge-cache directives.
-- **Private admin entry**: in Vercel Production, set a server-side `ADMIN_PORTAL_SLUG` to a long random value. The usual `/admin` URL then returns 404; open `https://<store-domain>/_owner/<your-value>` instead. This is an extra discovery barrier, not a replacement for the admin password, session, rate limit, or 2FA.
 - **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/ready`.
 - Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
 - **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads use the configured public Supabase Storage bucket; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.

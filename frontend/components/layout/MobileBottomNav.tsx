@@ -21,8 +21,8 @@ export function MobileBottomNav() {
   const { cartCount, favorites, currentUser, categories } = useStore();
   const [showCategorySheet, setShowCategorySheet] = useState(false);
 
-  // Hide mobile bottom nav completely inside the private admin dashboard.
-  if (pathname.startsWith("/admin") || pathname.startsWith("/_owner/")) {
+  // Hide mobile bottom nav completely inside admin dashboard so admin has full control space
+  if (pathname.startsWith("/admin")) {
     return null;
   }
 
