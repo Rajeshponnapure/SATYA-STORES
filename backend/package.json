@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.2",
-    "@vercel/blob": "^2.8.2",
     "compression": "^1.8.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -29,7 +29,6 @@
     "typescript": "^5.7.0"
   },
   "devDependencies": {
-    "@types/compression": "^1.8.1",
     "tsx": "^4.19.3"
   },
   "overrides": {

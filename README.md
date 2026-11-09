@@ -168,6 +168,7 @@ REDIS_URL=rediss://<managed-redis-endpoint>
 # Local or Vercel Supabase backend credentials (never put the secret key in frontend/.env.local)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SECRET_KEY=
+SUPABASE_STORAGE_BUCKET=product-images
 # Existing projects can use SUPABASE_SERVICE_ROLE_KEY instead of SUPABASE_SECRET_KEY
 
 # Production payment credentials; omit in development to use local-only mock behavior
@@ -182,8 +183,8 @@ Keep the admin-session secret, Redis URL, and Razorpay secret on the backend. Co
 
 - **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/` session cookies keep working. Public catalog responses now carry short edge-cache directives.
 - **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/ready`.
-- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `REDIS_URL` (mandatory when running more than one API instance), `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
-- **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads require `BLOB_READ_WRITE_TOKEN` and Vercel Blob; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.
+- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
+- **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads use the configured public Supabase Storage bucket; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.
 - If Razorpay webhooks are configured, point the webhook URL at `https://<the-vercel-domain>/api/payments/razorpay/webhook` (the frontend proxies it to the backend).
 
 ## Database setup
@@ -194,7 +195,7 @@ Without Supabase credentials, the backend persists data to backend/data/database
 
 ### Supabase mode
 
-1. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in backend/.env. The secret key is backend-only and bypasses RLS; never expose it to the browser.
+1. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` in backend/.env. The bucket name must exactly match an existing **public** Supabase Storage bucket. The secret key is backend-only and bypasses RLS; never expose it to the browser.
 2. For a new project, run backend/schema.sql in the Supabase SQL editor.
 3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql`, `backend/migrations/20261107_profile_images.sql`, and `backend/migrations/20261109_add_user_2fa_columns.sql` in the Supabase SQL editor.
 4. Generate a new admin password hash with `cd backend` then `npm run hash-password`. In Supabase SQL Editor, create the owner account with the generated hash (or update the existing owner row): `INSERT INTO users (id, full_name, email, mobile_number, password, role, account_status) VALUES ('usr-admin-1', 'Store Owner', 'admin@sathyastores.com', '+910000000000', '<PASTE_HASH_HERE>', 'owner', 'active') ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, role = 'owner', account_status = 'active';` Replace the sample phone with the owner's real number. Never use the old demo passwords.

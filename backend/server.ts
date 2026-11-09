@@ -14,13 +14,7 @@ import { userService } from "./services/userService";
 import { cmsService } from "./services/cmsService";
 import { getDatabase, saveDatabase } from "./db/database";
 import { initialPromotions } from "./db/initialData";
-import { isSupabaseConfigured } from "./db/supabase";
-// Optional Vercel Blob storage for production media uploads
-let putBlob: any = null;
-try {
-  const vb = require("@vercel/blob");
-  putBlob = vb.put || vb.default?.put;
-} catch (e) {}
+import { isSupabaseConfigured, supabase } from "./db/supabase";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { createRateLimitStore, hasDistributedRateLimits } from "./utils/rateLimitStore";
@@ -37,6 +31,7 @@ import {
 } from "./utils/session";
 
 const isProduction = process.env.NODE_ENV === "production";
+const supabaseStorageBucket = (process.env.SUPABASE_STORAGE_BUCKET || "").trim();
 
 function configuredOrigins(): Set<string> {
   const configured = (process.env.FRONTEND_URL || "")
@@ -432,8 +427,8 @@ app.post("/api/admin/change-password", async (req: Request, res: Response) => {
 // Image Upload API (Accepts Base64 payload from desktop drag-drop or mobile file/camera picker)
 app.post("/api/upload", async (req: Request, res: Response) => {
   try {
-    if (isProduction && (!process.env.BLOB_READ_WRITE_TOKEN || !putBlob)) {
-      return res.status(503).json({ success: false, error: "Durable object storage is not configured for uploads." });
+    if (isProduction && (!isSupabaseConfigured || !supabaseStorageBucket || !supabase)) {
+      return res.status(503).json({ success: false, error: "Supabase Storage is not configured for uploads." });
     }
     const { fileName, fileData } = req.body;
     if (!fileData) {
@@ -461,13 +456,23 @@ app.post("/api/upload", async (req: Request, res: Response) => {
     const uniqueName = `upload_${Date.now()}_${cleanBase}.${ext}`;
     let relativeUrl = `/uploads/${uniqueName}`;
 
-    // Blob storage works on any host (Vercel, Render, ...) once the token is set.
-    if (process.env.BLOB_READ_WRITE_TOKEN && putBlob) {
+    // The server writes with its private Supabase key. The bucket must be
+    // public so product and profile images remain visible to customers.
+    if (supabase && supabaseStorageBucket) {
       try {
-        const blob = await putBlob(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
-        relativeUrl = blob.url;
-      } catch (blobErr) {
-        console.error("[Upload] Object storage write failed:", blobErr);
+        const objectPath = `uploads/${uniqueName}`;
+        const { error: storageError } = await supabase.storage
+          .from(supabaseStorageBucket)
+          .upload(objectPath, buffer, { contentType: mime, cacheControl: "31536000", upsert: false });
+        if (storageError) throw storageError;
+
+        const { data: publicUrl } = supabase.storage
+          .from(supabaseStorageBucket)
+          .getPublicUrl(objectPath);
+        if (!publicUrl?.publicUrl) throw new Error("Supabase Storage did not return a public URL.");
+        relativeUrl = publicUrl.publicUrl;
+      } catch (storageError) {
+        console.error("[Upload] Supabase Storage write failed:", storageError);
         return res.status(503).json({ success: false, error: "Image storage is temporarily unavailable." });
       }
     } else {

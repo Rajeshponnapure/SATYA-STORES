@@ -33,11 +33,11 @@ FRONTEND_URL=https://store.example.com
 SESSION_SECRET=<at least 32 random characters>
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SECRET_KEY=<server-only key>
+SUPABASE_STORAGE_BUCKET=<existing public Supabase Storage bucket name>
 REDIS_URL=rediss://<managed-redis-endpoint>
 RAZORPAY_KEY_ID=<live key, only when enabling Razorpay>
 RAZORPAY_KEY_SECRET=<live secret, only when enabling Razorpay>
 RAZORPAY_WEBHOOK_SECRET=<webhook secret, only when enabling Razorpay>
-BLOB_READ_WRITE_TOKEN=<object-storage write token>
 ```
 
 Generate a session secret with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Rotate any secret or payment key that was ever placed in a source file, browser variable, screenshot, or shared chat.
@@ -49,12 +49,12 @@ Generate a session secret with `node -e "console.log(require('crypto').randomByt
 The current Next.js rewrite keeps browser API requests on the storefront origin. Deploy the frontend on Vercel (or place the custom storefront domain behind Cloudflare) and leave these public GET responses cacheable at the edge for one minute:
 
 ```text
-Browser → Cloudflare/Vercel edge → Next.js storefront /api rewrite → Express API → PostgreSQL/Redis/object storage
+Browser → Cloudflare/Vercel edge → Next.js storefront /api rewrite → Express API → Supabase/Redis/Supabase Storage
 ```
 
 Cache only `GET /api/storefront` (the preferred bootstrap response), `/api/products`, `/api/categories`, `/api/promotions`, `/api/marquees`, `/api/layout`, `/api/settings`, and product reviews. Never cache an authenticated route, request with an admin response, checkout, payment, account, upload, webhook, or any mutation. The code sends `Vary: Cookie` and `no-store` for sensitive responses to enforce this distinction.
 
-The CDN improves first-page latency and absorbs catalog traffic; it is not an API database or a substitute for Redis/PostgreSQL transactions. Configure image delivery through Vercel Blob or an image CDN, not inline base64 data or Render's ephemeral disk.
+The CDN improves first-page latency and absorbs catalog traffic; it is not an API database or a substitute for Redis/PostgreSQL transactions. Configure image delivery through a public Supabase Storage bucket or an image CDN, not inline base64 data or Render's ephemeral disk.
 
 ## Database work required before horizontal scale
 
