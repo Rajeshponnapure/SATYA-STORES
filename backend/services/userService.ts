@@ -74,9 +74,9 @@ function decryptTotpSecret(stored: string): { secret: string; wasLegacyPlaintext
 }
 
 function validateAdminPin(pin: string): string | undefined {
-  if (!/^\d{10,12}$/.test(pin)) return "Admin PIN must contain exactly 10 to 12 digits.";
+  if (!/^\d{6}$/.test(pin)) return "Admin PIN must contain exactly 6 digits.";
   if (/^(\d)\1+$/.test(pin)) return "Choose an Admin PIN that is not the same digit repeated.";
-  if (["0123456789", "1234567890", "9876543210"].includes(pin)) return "Choose a less predictable Admin PIN.";
+  if (["012345", "123456", "654321", "987654"].includes(pin)) return "Choose a less predictable Admin PIN.";
   return undefined;
 }
 
@@ -616,7 +616,7 @@ export const userService = {
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
     if (!adminUser?.twoFactorEnabled || !adminUser.twoFactorSecret) {
-      return { success: false, error: "Set up Google Authenticator before continuing." };
+      return { success: false, error: "Google Authenticator has not been provisioned. Contact the super administrator." };
     }
     try {
       const { secret, wasLegacyPlaintext } = decryptTotpSecret(adminUser.twoFactorSecret);
@@ -631,56 +631,31 @@ export const userService = {
         ? { success: true }
         : { success: false, error: "Enter the current 6-digit code from your authenticator app." };
     } catch {
-      return { success: false, error: "Authenticator verification is unavailable. Generate a new QR code from an existing admin session." };
+      return { success: false, error: "Authenticator verification is unavailable. Contact the super administrator." };
     }
   },
 
-  async setInitialAdminPin(pin: string): Promise<{ success: boolean; error?: string }> {
+  // This method is deliberately called only by the setup-key-protected
+  // super-admin endpoint. Ordinary admin sessions cannot create or replace it.
+  async setAdminPinFromSuperAdminSetup(pin: string): Promise<{ success: boolean; error?: string }> {
     const validationError = validateAdminPin(pin);
     if (validationError) return { success: false, error: validationError };
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
     if (!adminUser) return { success: false, error: "Administrative account is not configured." };
-    if (adminUser.adminPinHash) return { success: false, error: "An Admin PIN is already configured." };
     adminUser.adminPinHash = hashPassword(pin);
     await saveDatabase(db);
     return { success: true };
   },
 
   async verifyAdminPin(pin: string): Promise<{ success: boolean; error?: string }> {
-    if (!/^\d{10,12}$/.test(pin)) return { success: false, error: "Enter your 10 to 12 digit Admin PIN." };
+    if (!/^\d{6}$/.test(pin)) return { success: false, error: "Enter the shared 6-digit Admin PIN." };
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
-    if (!adminUser?.adminPinHash) return { success: false, error: "Set up an Admin PIN before continuing." };
+    if (!adminUser?.adminPinHash) return { success: false, error: "Admin PIN has not been provisioned. Contact the super administrator." };
     return verifyPassword(pin, adminUser.adminPinHash)
       ? { success: true }
       : { success: false, error: "The Admin PIN is not correct." };
-  },
-
-  async changeAdminPin(currentPin: string, newPin: string, totpCode: string): Promise<{ success: boolean; error?: string }> {
-    const validationError = validateAdminPin(newPin);
-    if (validationError) return { success: false, error: validationError };
-    const totp = await this.verifyAdminTotp(totpCode);
-    if (!totp.success) return totp;
-    const db = await getDatabase();
-    const adminUser = ownerFromDatabase(db);
-    if (!adminUser?.adminPinHash || !verifyPassword(currentPin, adminUser.adminPinHash)) {
-      return { success: false, error: "Current Admin PIN is not correct." };
-    }
-    adminUser.adminPinHash = hashPassword(newPin);
-    await saveDatabase(db);
-    return { success: true };
-  },
-
-  async generateAdmin2fa(): Promise<{ success: boolean; otp: string; message: string; provider: string }> {
-    return { success: false, otp: "", provider: "Unavailable", message: "OTP delivery is not configured. Use an authenticator app instead." };
-  },
-
-  async verifyAdmin2faCode(code: string): Promise<{ success: boolean; valid: boolean; method?: string; error?: string }> {
-    const result = await this.verifyAdminTotp(code);
-    return result.success
-      ? { success: true, valid: true, method: "Google Authenticator compatible TOTP" }
-      : { success: false, valid: false, error: result.error };
   },
 
   async adminChangePasswordWith2FA(
@@ -715,7 +690,7 @@ export const userService = {
       isTotpValid = verifyTOTP(cleanCode, secret);
       if (isTotpValid && wasLegacyPlaintext) adminUser.twoFactorSecret = encryptTotpSecret(secret);
     } catch {
-      return { success: false, error: "Authenticator verification is unavailable. Generate a new QR code from an existing admin session." };
+      return { success: false, error: "Authenticator verification is unavailable. Contact the super administrator." };
     }
     if (!isTotpValid) {
       return {

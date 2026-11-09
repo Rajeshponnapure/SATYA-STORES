@@ -151,6 +151,19 @@ const authRateLimit = rateLimit({
 });
 app.use(["/api/auth/login", "/api/admin/login", "/api/auth/signup", "/api/auth/forgot-password", "/api/auth/reset-password"], authRateLimit);
 
+// This protects the owner-only security provisioning endpoints separately from
+// normal sign-in attempts. The setup key is never sent to, or stored by, the
+// regular admin dashboard.
+const adminSecuritySetupLimitStore = createRateLimitStore("satya:rl:admin-security-setup:");
+const adminSecuritySetupLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  ...(adminSecuritySetupLimitStore ? { store: adminSecuritySetupLimitStore } : {}),
+});
+app.use("/api/admin/security-bootstrap", adminSecuritySetupLimit);
+
 app.use("/api", (req: Request, res: Response, next: import("express").NextFunction) => {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method) || req.path === "/payments/razorpay/webhook") return next();
   const origin = req.get("origin");
@@ -269,9 +282,13 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
     if (!isSessionSecretConfigured()) {
       return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
     }
-    if (!security.twoFactorEnabled) {
-      setAdminPreAuth(res, "totp-setup");
-      return res.json({ success: true, requiresTotpSetup: true });
+    // Login can only verify pre-existing factors. It must never give someone
+    // who knows the password a path to enrol an authenticator or choose a PIN.
+    if (!security.twoFactorEnabled || !security.adminPinConfigured) {
+      return res.status(503).json({
+        success: false,
+        error: "Admin security has not been provisioned. Contact the super administrator.",
+      });
     }
     setAdminPreAuth(res, "totp");
     res.json({ success: true, requiresTotp: true });
@@ -280,7 +297,7 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
   }
 });
 
-function requireAdminPreAuth(req: Request, res: Response, stage: "totp-setup" | "totp" | "pin-setup" | "pin"): boolean {
+function requireAdminPreAuth(req: Request, res: Response, stage: "totp" | "pin"): boolean {
   if (getAdminPreAuthStage(req) === stage) return true;
   res.status(401).json({ success: false, error: "Start the admin sign-in process again." });
   return false;
@@ -296,29 +313,6 @@ async function createTotpSetupResponse(res: Response): Promise<void> {
   res.json({ ...setup, qrCodeDataUrl });
 }
 
-// First sign-in setup: password → fresh QR code → TOTP verification.
-app.post("/api/admin/login/setup-totp", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "totp-setup")) return;
-    await createTotpSetupResponse(res);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/login/confirm-totp", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "totp-setup")) return;
-    const result = await userService.confirmAdminTotpSetup(String(req.body?.code || ""));
-    if (!result.success) return res.status(400).json(result);
-    const security = await userService.getAdminSecurityStatus();
-    setAdminPreAuth(res, security.adminPinConfigured ? "pin" : "pin-setup");
-    res.json({ success: true, requiresAdminPin: true, requiresAdminPinSetup: !security.adminPinConfigured });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
 // Every normal admin sign-in must prove the current Google Authenticator code.
 app.post("/api/admin/login/verify-totp", async (req: Request, res: Response) => {
   try {
@@ -326,22 +320,11 @@ app.post("/api/admin/login/verify-totp", async (req: Request, res: Response) => 
     const result = await userService.verifyAdminTotp(String(req.body?.code || ""));
     if (!result.success) return res.status(401).json(result);
     const security = await userService.getAdminSecurityStatus();
-    setAdminPreAuth(res, security.adminPinConfigured ? "pin" : "pin-setup");
-    res.json({ success: true, requiresAdminPin: true, requiresAdminPinSetup: !security.adminPinConfigured });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-// First-time setup has one additional screen so the owner chooses a strong
-// 10–12 digit PIN. The browser never receives or stores its PBKDF2 hash.
-app.post("/api/admin/login/setup-pin", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "pin-setup")) return;
-    const result = await userService.setInitialAdminPin(String(req.body?.pin || ""));
-    if (!result.success) return res.status(400).json(result);
-    if (!setAdminSession(res)) return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
-    res.json({ success: true, isAdmin: true });
+    if (!security.adminPinConfigured) {
+      return res.status(503).json({ success: false, error: "Admin PIN has not been provisioned. Contact the super administrator." });
+    }
+    setAdminPreAuth(res, "pin");
+    res.json({ success: true, requiresAdminPin: true });
   } catch (err: any) {
     respondInternalError(res, err);
   }
@@ -354,6 +337,63 @@ app.post("/api/admin/login/verify-pin", async (req: Request, res: Response) => {
     if (!result.success) return res.status(401).json(result);
     if (!setAdminSession(res)) return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
     res.json({ success: true, isAdmin: true });
+  } catch (err: any) {
+    respondInternalError(res, err);
+  }
+});
+
+function hasValidAdminSecuritySetupKey(req: Request): boolean {
+  const configured = (process.env.ADMIN_SECURITY_SETUP_KEY || "").trim();
+  const supplied = req.get("x-admin-security-setup-key") || "";
+  if (configured.length < 32 || !supplied) return false;
+  const expected = Buffer.from(configured);
+  const received = Buffer.from(supplied);
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+}
+
+function requireAdminSecuritySetupKey(req: Request, res: Response): boolean {
+  if (!process.env.ADMIN_SECURITY_SETUP_KEY || process.env.ADMIN_SECURITY_SETUP_KEY.trim().length < 32) {
+    res.status(503).json({ success: false, error: "Super-admin setup is disabled. Configure ADMIN_SECURITY_SETUP_KEY in Render to enable it temporarily." });
+    return false;
+  }
+  if (!hasValidAdminSecuritySetupKey(req)) {
+    res.status(403).json({ success: false, error: "The super-admin setup key is not valid." });
+    return false;
+  }
+  return true;
+}
+
+// These are intentionally outside the authenticated admin-router. A normal
+// admin session is never sufficient to create/reconfigure shared login factors.
+// The only authority is the 32+ character secret held in Render by the owner.
+app.post("/api/admin/security-bootstrap/generate-totp", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdminSecuritySetupKey(req, res)) return;
+    await createTotpSetupResponse(res);
+  } catch (err: any) {
+    respondInternalError(res, err);
+  }
+});
+
+app.post("/api/admin/security-bootstrap/confirm-totp", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdminSecuritySetupKey(req, res)) return;
+    const result = await userService.confirmAdminTotpSetup(String(req.body?.code || ""));
+    if (!result.success) return res.status(400).json(result);
+    res.json({ success: true });
+  } catch (err: any) {
+    respondInternalError(res, err);
+  }
+});
+
+app.post("/api/admin/security-bootstrap/set-pin", async (req: Request, res: Response) => {
+  try {
+    if (!requireAdminSecuritySetupKey(req, res)) return;
+    const pin = req.body?.pin;
+    if (typeof pin !== "string") return res.status(400).json({ success: false, error: "A six-digit Admin PIN is required." });
+    const result = await userService.setAdminPinFromSuperAdminSetup(pin);
+    if (!result.success) return res.status(400).json(result);
+    res.json({ success: true });
   } catch (err: any) {
     respondInternalError(res, err);
   }
@@ -452,70 +492,6 @@ app.put("/api/admin/profile", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: "Profile details are invalid." });
     }
     const result = await userService.updateAdminProfile({ fullName, email, mobileNumber, businessEntity, profileImage });
-    res.json(result);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.get("/api/admin/2fa-setup", async (_req: Request, res: Response) => {
-  try {
-    res.json(await userService.getAdminSecurityStatus());
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-// A signed-in owner may replace an authenticator. The old secret remains
-// valid until the fresh QR code is scanned and confirmed.
-app.post("/api/admin/2fa/setup", async (_req: Request, res: Response) => {
-  try {
-    await createTotpSetupResponse(res);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/2fa/confirm", async (req: Request, res: Response) => {
-  try {
-    const result = await userService.confirmAdminTotpSetup(String(req.body?.code || ""));
-    if (!result.success) return res.status(400).json(result);
-    res.json({ success: true });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/verify-2fa", async (req: Request, res: Response) => {
-  try {
-    const { code } = req.body;
-    if (!code) {
-      return res.status(400).json({ success: false, error: "Verification code is required." });
-    }
-    const result = await userService.verifyAdmin2faCode(code);
-    res.json(result);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/change-pin", async (req: Request, res: Response) => {
-  try {
-    const { currentPin, newPin, twoFactorCode } = req.body || {};
-    if (typeof currentPin !== "string" || typeof newPin !== "string" || typeof twoFactorCode !== "string") {
-      return res.status(400).json({ success: false, error: "Current PIN, new PIN, and authenticator code are required." });
-    }
-    const result = await userService.changeAdminPin(currentPin, newPin, twoFactorCode);
-    if (!result.success) return res.status(400).json(result);
-    res.json({ success: true });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/generate-2fa", async (_req: Request, res: Response) => {
-  try {
-    const result = await userService.generateAdmin2fa();
     res.json(result);
   } catch (err: any) {
     respondInternalError(res, err);

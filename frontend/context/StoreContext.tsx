@@ -43,18 +43,8 @@ interface RazorpayFailureResponse {
 interface AdminLoginResult {
   success: boolean;
   error?: string;
-  requiresTotpSetup?: boolean;
   requiresTotp?: boolean;
   requiresAdminPin?: boolean;
-  requiresAdminPinSetup?: boolean;
-}
-
-interface TotpSetupResponse {
-  success: boolean;
-  secret: string;
-  otpauthUri: string;
-  qrCodeDataUrl: string;
-  expiresAt: string;
 }
 
 declare global {
@@ -121,12 +111,8 @@ interface StoreContextType {
 
   // Admin Auth & Management
   adminLogin: (password: string, usernameOrEmail?: string) => Promise<AdminLoginResult>;
-  beginAdminTotpSetup: () => Promise<TotpSetupResponse | null>;
-  confirmAdminTotpSetup: (code: string) => Promise<AdminLoginResult>;
-  beginAdminAuthenticatorReplacement: () => Promise<TotpSetupResponse | null>;
-  confirmAdminAuthenticatorReplacement: (code: string) => Promise<{ success: boolean; error?: string }>;
   verifyAdminLoginTotp: (code: string) => Promise<AdminLoginResult>;
-  completeAdminPin: (mode: "setup" | "verify", pin: string) => Promise<{ success: boolean; error?: string }>;
+  completeAdminPin: (pin: string) => Promise<{ success: boolean; error?: string }>;
   adminLogout: () => Promise<void>;
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
@@ -153,11 +139,7 @@ interface StoreContextType {
   adminProfile: AdminProfile | null;
   fetchAdminProfile: () => Promise<AdminProfile | null>;
   updateAdminProfile: (updates: Partial<AdminProfile>) => Promise<boolean>;
-  fetchAdmin2faSetup: () => Promise<{ success: boolean; twoFactorEnabled: boolean; adminPinConfigured: boolean } | null>;
-  verifyAdmin2faCode: (code: string) => Promise<{ success: boolean; valid: boolean; method?: string; error?: string }>;
-  generateAdmin2fa: () => Promise<{ success: boolean; otp?: string; message?: string }>;
   adminChangePasswordWith2FA: (currentPassword: string, newPassword: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
-  changeAdminPin: (currentPin: string, newPin: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
   uploadImage: (fileName: string, fileData: string) => Promise<{ success: boolean; url?: string; error?: string }>;
 
   // Admin Catalog & Operations
@@ -894,60 +876,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const beginAdminTotpSetup = async (): Promise<TotpSetupResponse | null> => {
-    try {
-      const res = await fetch("/api/admin/login/setup-totp", { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.success) return data as TotpSetupResponse;
-      toast.error(data.error || "Unable to generate an authenticator QR code.");
-    } catch {
-      toast.error("Could not start authenticator setup.");
-    }
-    return null;
-  };
-
-  const confirmAdminTotpSetup = async (code: string): Promise<AdminLoginResult> => {
-    try {
-      const res = await fetch("/api/admin/login/confirm-totp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) toast.error(data.error || "Authenticator code was not accepted.");
-      return data as AdminLoginResult;
-    } catch {
-      return { success: false, error: "Could not verify the authenticator code." };
-    }
-  };
-
-  const beginAdminAuthenticatorReplacement = async (): Promise<TotpSetupResponse | null> => {
-    try {
-      const res = await fetch("/api/admin/2fa/setup", { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.success) return data as TotpSetupResponse;
-      toast.error(data.error || "Unable to generate a replacement QR code.");
-    } catch {
-      toast.error("Could not start authenticator replacement.");
-    }
-    return null;
-  };
-
-  const confirmAdminAuthenticatorReplacement = async (code: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const res = await fetch("/api/admin/2fa/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) toast.error(data.error || "Authenticator code was not accepted.");
-      return data;
-    } catch {
-      return { success: false, error: "Could not confirm authenticator replacement." };
-    }
-  };
-
   const verifyAdminLoginTotp = async (code: string): Promise<AdminLoginResult> => {
     try {
       const res = await fetch("/api/admin/login/verify-totp", {
@@ -963,9 +891,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeAdminPin = async (mode: "setup" | "verify", pin: string): Promise<{ success: boolean; error?: string }> => {
+  const completeAdminPin = async (pin: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const res = await fetch(`/api/admin/login/${mode === "setup" ? "setup" : "verify"}-pin`, {
+      const res = await fetch("/api/admin/login/verify-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pin }),
@@ -975,7 +903,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       setIsAdminAuthenticated(true);
       localStorage.setItem("satya_admin_auth", "true");
-      toast.success(mode === "setup" ? "Admin PIN configured." : "Admin PIN verified.");
+      toast.success("Admin PIN verified.");
       return { success: true };
     } catch {
       return { success: false, error: "Could not verify the Admin PIN." };
@@ -1102,40 +1030,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchAdmin2faSetup = useCallback(async (): Promise<{
-    success: boolean;
-    twoFactorEnabled: boolean;
-    adminPinConfigured: boolean;
-  } | null> => {
-    try {
-      const res = await fetch("/api/admin/2fa-setup");
-      const data = await res.json();
-      if (res.ok && data.success) {
-        return data;
-      }
-    } catch {}
-    return null;
-  }, []);
-
-  const verifyAdmin2faCode = async (code: string): Promise<{
-    success: boolean;
-    valid: boolean;
-    method?: string;
-    error?: string;
-  }> => {
-    try {
-      const res = await fetch("/api/admin/verify-2fa", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      return data;
-    } catch {
-      return { success: false, valid: false, error: "Network error verifying 2FA" };
-    }
-  };
-
   const fetchAdminProfile = useCallback(async (): Promise<AdminProfile | null> => {
     try {
       const res = await fetch("/api/admin/profile");
@@ -1166,41 +1060,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       toast.error("Network error updating profile");
       return false;
-    }
-  };
-
-  const changeAdminPin = async (currentPin: string, newPin: string, twoFactorCode: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const res = await fetch("/api/admin/change-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPin, newPin, twoFactorCode }),
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.success("Admin PIN changed successfully.");
-        return { success: true };
-      }
-      toast.error(data.error || "Could not change the Admin PIN.");
-      return { success: false, error: data.error };
-    } catch {
-      toast.error("Could not change the Admin PIN.");
-      return { success: false, error: "Network error changing Admin PIN." };
-    }
-  };
-
-  const generateAdmin2fa = async (): Promise<{ success: boolean; otp?: string; message?: string }> => {
-    try {
-      const res = await fetch("/api/admin/generate-2fa", { method: "POST" });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        toast.info(data.message || `2FA Code: ${data.otp}`);
-        return { success: true, otp: data.otp, message: data.message };
-      }
-      toast.error(data.error || "Failed to generate 2FA code");
-      return { success: false };
-    } catch {
-      return { success: false };
     }
   };
 
@@ -1648,10 +1507,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         requestPasswordReset,
         resetPasswordWithOtp,
         adminLogin,
-        beginAdminTotpSetup,
-        confirmAdminTotpSetup,
-        beginAdminAuthenticatorReplacement,
-        confirmAdminAuthenticatorReplacement,
         verifyAdminLoginTotp,
         completeAdminPin,
         adminLogout,
@@ -1664,11 +1519,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         adminProfile,
         fetchAdminProfile,
         updateAdminProfile,
-        fetchAdmin2faSetup,
-        verifyAdmin2faCode,
-        generateAdmin2fa,
         adminChangePasswordWith2FA,
-        changeAdminPin,
         uploadImage,
         addProduct,
         updateProduct,

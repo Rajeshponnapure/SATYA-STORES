@@ -56,7 +56,7 @@ function issue(res: Response, name: string, subject: string, durationSeconds: nu
   return true;
 }
 
-export type AdminPreAuthStage = "totp-setup" | "totp" | "pin-setup" | "pin";
+export type AdminPreAuthStage = "totp" | "pin";
 
 export function setAdminPreAuth(res: Response, stage: AdminPreAuthStage): boolean {
   // A nonce separates short-lived pre-authentication attempts from each other.
@@ -66,7 +66,7 @@ export function setAdminPreAuth(res: Response, stage: AdminPreAuthStage): boolea
 export function getAdminPreAuthStage(req: Request): AdminPreAuthStage | null {
   const subject = readSession(req, ADMIN_PREAUTH_COOKIE);
   const stage = subject?.startsWith("owner:") ? subject.split(":")[1] : "";
-  return stage === "totp-setup" || stage === "totp" || stage === "pin-setup" || stage === "pin" ? stage : null;
+  return stage === "totp" || stage === "pin" ? stage : null;
 }
 
 export function clearAdminPreAuth(res: Response): void {

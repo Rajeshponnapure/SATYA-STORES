@@ -165,6 +165,8 @@ FRONTEND_URL=http://localhost:3000
 SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
 # Recommended separate 32+ character secret for encrypted Google Authenticator data
 TOTP_ENCRYPTION_KEY=replace-with-a-different-random-secret-of-at-least-32-characters
+# Temporary owner-only key for /admin/security-setup; remove after provisioning
+ADMIN_SECURITY_SETUP_KEY=replace-with-a-third-random-secret-of-at-least-32-characters
 REDIS_URL=rediss://<managed-redis-endpoint>
 
 # Local or Vercel Supabase backend credentials (never put the secret key in frontend/.env.local)
@@ -185,7 +187,7 @@ Keep the admin-session secret, Redis URL, and Razorpay secret on the backend. Co
 
 - **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/` session cookies keep working. Public catalog responses now carry short edge-cache directives.
 - **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/ready`.
-- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `TOTP_ENCRYPTION_KEY` (a separate 32+ character secret recommended for encrypting authenticator data), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
+- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `TOTP_ENCRYPTION_KEY` (a separate 32+ character secret recommended for encrypting authenticator data), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. `ADMIN_SECURITY_SETUP_KEY` is a temporary, separate 32+ character super-admin secret: add it only while provisioning or replacing the shared login factors, then remove it. Keep every secret out of frontend environment variables and source control.
 - **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads use the configured public Supabase Storage bucket; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.
 - If Razorpay webhooks are configured, point the webhook URL at `https://<the-vercel-domain>/api/payments/razorpay/webhook` (the frontend proxies it to the backend).
 
@@ -216,7 +218,7 @@ API routes are defined in backend/server.ts and use the /api prefix.
 - **Store operations:** admin profiles, users, orders, payments, refunds, inventory, delivery, coupons, layout, and settings.
 - **Infrastructure:** health check, database status, and image upload.
 
-Admin and customer API requests use expiring, signed HttpOnly cookies. Customer routes are scoped to the signed-in user. An admin sign-in requires the owner password, the current Google Authenticator-compatible TOTP code, and a private 10–12 digit Admin PIN. The PIN is stored only as a PBKDF2 hash and can be changed inside the admin console only with the current PIN and another current authenticator code. See backend/utils/session.ts, backend/server.ts, and the database-lockdown migration.
+Admin and customer API requests use expiring, signed HttpOnly cookies. Customer routes are scoped to the signed-in user. An admin sign-in requires the owner password, a pre-provisioned Google Authenticator-compatible TOTP code, and a pre-provisioned shared six-digit Admin PIN. The normal login and dashboard cannot register/replace either factor. The owner temporarily adds `ADMIN_SECURITY_SETUP_KEY` in Render, opens `/admin/security-setup`, configures the factors, and then removes that Render variable again. The PIN is stored only as a PBKDF2 hash and the TOTP secret is encrypted before storage. See backend/utils/session.ts and backend/server.ts.
 
 ## Common commands
 

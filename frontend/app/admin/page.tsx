@@ -92,15 +92,9 @@ export default function AdminDashboardPage() {
     fetchAdminProfile,
     updateAdminProfile,
     uploadImage,
-    verifyAdmin2faCode,
-    beginAdminTotpSetup,
-    confirmAdminTotpSetup,
-    beginAdminAuthenticatorReplacement,
-    confirmAdminAuthenticatorReplacement,
     verifyAdminLoginTotp,
     completeAdminPin,
     adminChangePasswordWith2FA,
-    changeAdminPin,
     processRefund,
     fetchSettlements,
   } = useStore();
@@ -118,11 +112,9 @@ export default function AdminDashboardPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [adminLoginStep, setAdminLoginStep] = useState<"password" | "totp-setup" | "totp" | "pin-setup" | "pin">("password");
+  const [adminLoginStep, setAdminLoginStep] = useState<"password" | "totp" | "pin">("password");
   const [loginTotpCode, setLoginTotpCode] = useState("");
-  const [loginTotpSetup, setLoginTotpSetup] = useState<{ secret: string; qrCodeDataUrl: string; expiresAt: string } | null>(null);
   const [loginAdminPin, setLoginAdminPin] = useState("");
-  const [confirmLoginAdminPin, setConfirmLoginAdminPin] = useState("");
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<
@@ -228,19 +220,6 @@ export default function AdminDashboardPage() {
   const [editUserStatus, setEditUserStatus] = useState<"active" | "suspended">("active");
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
-  // External 2FA State
-  const [test2faInput, setTest2faInput] = useState("");
-  const [test2faStatus, setTest2faStatus] = useState<string | null>(null);
-  const [isTesting2fa, setIsTesting2fa] = useState(false);
-  const [replacementTotpSetup, setReplacementTotpSetup] = useState<{ secret: string; qrCodeDataUrl: string; expiresAt: string } | null>(null);
-  const [replacementTotpCode, setReplacementTotpCode] = useState("");
-  const [isReplacingAuthenticator, setIsReplacingAuthenticator] = useState(false);
-  const [currentAdminPin, setCurrentAdminPin] = useState("");
-  const [newAdminPin, setNewAdminPin] = useState("");
-  const [confirmAdminPin, setConfirmAdminPin] = useState("");
-  const [adminPinTotpCode, setAdminPinTotpCode] = useState("");
-  const [isChangingAdminPin, setIsChangingAdminPin] = useState(false);
-
   // Layout Drag & Drop State
   const [draggedSectionIndex, setDraggedSectionIndex] = useState<number | null>(null);
   const [dragOverSectionIndex, setDragOverSectionIndex] = useState<number | null>(null);
@@ -316,13 +295,7 @@ export default function AdminDashboardPage() {
 
     setIsLoggingIn(true);
     const result = await adminLogin(adminPassword, adminEmail);
-    if (result.requiresTotpSetup) {
-      const setup = await beginAdminTotpSetup();
-      if (setup) {
-        setLoginTotpSetup(setup);
-        setAdminLoginStep("totp-setup");
-      }
-    } else if (result.requiresTotp) setAdminLoginStep("totp");
+    if (result.requiresTotp) setAdminLoginStep("totp");
     setIsLoggingIn(false);
   };
 
@@ -333,29 +306,22 @@ export default function AdminDashboardPage() {
       return;
     }
     setIsLoggingIn(true);
-    const result = adminLoginStep === "totp-setup"
-      ? await confirmAdminTotpSetup(loginTotpCode)
-      : await verifyAdminLoginTotp(loginTotpCode);
+    const result = await verifyAdminLoginTotp(loginTotpCode);
     if (result.success && result.requiresAdminPin) {
-      setAdminLoginStep(result.requiresAdminPinSetup ? "pin-setup" : "pin");
+      setAdminLoginStep("pin");
       setLoginTotpCode("");
-      setLoginTotpSetup(null);
     }
     setIsLoggingIn(false);
   };
 
   const handleAdminPinLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!/^\d{10,12}$/.test(loginAdminPin)) {
-      toast.error("Enter your 10 to 12 digit Admin PIN.");
-      return;
-    }
-    if (adminLoginStep === "pin-setup" && loginAdminPin !== confirmLoginAdminPin) {
-      toast.error("Admin PIN and confirmation do not match.");
+    if (!/^\d{6}$/.test(loginAdminPin)) {
+      toast.error("Enter the shared 6-digit Admin PIN.");
       return;
     }
     setIsLoggingIn(true);
-    const result = await completeAdminPin(adminLoginStep === "pin-setup" ? "setup" : "verify", loginAdminPin);
+    const result = await completeAdminPin(loginAdminPin);
     setIsLoggingIn(false);
     if (!result.success) toast.error(result.error || "Admin PIN verification failed.");
   };
@@ -416,33 +382,21 @@ export default function AdminDashboardPage() {
             </form>
           )}
 
-          {adminLoginStep === "totp-setup" && loginTotpSetup && (
-            <form onSubmit={handleLoginTotp} className="space-y-4">
-              <p className="text-sm font-bold text-slate-800">Set up Google Authenticator</p>
-              <p className="text-xs text-slate-500">Scan this new QR code in Google Authenticator, then enter its current six-digit code. This QR expires in ten minutes and becomes invalid after confirmation.</p>
-              <Image src={loginTotpSetup.qrCodeDataUrl} alt="Google Authenticator setup QR code" width={208} height={208} unoptimized className="mx-auto h-52 w-52 rounded-xl border border-slate-200" />
-              <details className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600"><summary className="cursor-pointer font-bold">Cannot scan the QR code?</summary><p className="mt-2 font-mono break-all select-all">{loginTotpSetup.secret}</p></details>
-              <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="6-digit authenticator code" value={loginTotpCode} onChange={(e) => setLoginTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.35em]" />
-              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Verify authenticator"}</button>
-            </form>
-          )}
-
           {adminLoginStep === "totp" && (
             <form onSubmit={handleLoginTotp} className="space-y-4">
               <p className="text-sm font-bold text-slate-800">Google Authenticator verification</p>
               <p className="text-xs text-slate-500">Enter the current six-digit code from your registered authenticator app.</p>
               <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus required placeholder="6-digit authenticator code" value={loginTotpCode} onChange={(e) => setLoginTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.35em]" />
-              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Continue to device check"}</button>
+              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Continue to PIN"}</button>
             </form>
           )}
 
-          {(adminLoginStep === "pin-setup" || adminLoginStep === "pin") && (
+          {adminLoginStep === "pin" && (
             <form onSubmit={handleAdminPinLogin} className="space-y-4">
-              <p className="text-sm font-bold text-slate-800">{adminLoginStep === "pin-setup" ? "Create your Admin PIN" : "Admin PIN verification"}</p>
-              <p className="text-xs text-slate-500">{adminLoginStep === "pin-setup" ? "Choose a private 10 to 12 digit Admin PIN. It is stored only as a secure hash and is required after your password and Google Authenticator code." : "Enter your private 10 to 12 digit Admin PIN to finish signing in."}</p>
-              <input type="password" inputMode="numeric" autoComplete={adminLoginStep === "pin-setup" ? "new-password" : "current-password"} maxLength={12} autoFocus required placeholder="10 to 12 digit Admin PIN" value={loginAdminPin} onChange={(e) => setLoginAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.25em]" />
-              {adminLoginStep === "pin-setup" && <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={12} required placeholder="Confirm Admin PIN" value={confirmLoginAdminPin} onChange={(e) => setConfirmLoginAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.25em]" />}
-              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : adminLoginStep === "pin-setup" ? "Save Admin PIN and enter" : "Verify Admin PIN and enter"}</button>
+              <p className="text-sm font-bold text-slate-800">Shared Admin PIN verification</p>
+              <p className="text-xs text-slate-500">Enter the pre-configured six-digit Admin PIN to finish signing in.</p>
+              <input type="password" inputMode="numeric" autoComplete="current-password" maxLength={6} autoFocus required placeholder="6-digit Admin PIN" value={loginAdminPin} onChange={(e) => setLoginAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.25em]" />
+              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Verify Admin PIN and enter"}</button>
             </form>
           )}
         </div>
@@ -743,73 +697,6 @@ export default function AdminDashboardPage() {
     if (success) {
       fetchAdminUsers(userSearch);
     }
-  };
-
-  const handleTest2faCode = async () => {
-    if (!test2faInput || test2faInput.length !== 6) {
-      toast.error("Please enter a 6-digit verification code to test.");
-      return;
-    }
-    setIsTesting2fa(true);
-    const res = await verifyAdmin2faCode(test2faInput);
-    setIsTesting2fa(false);
-    if (res.valid) {
-      setTest2faStatus(`Verified successfully via ${res.method}!`);
-      toast.success(`2FA Code Verified: ${res.method}`);
-    } else {
-      setTest2faStatus(null);
-      toast.error(res.error || "Invalid 2FA code.");
-    }
-  };
-
-  const handleStartAuthenticatorReplacement = async () => {
-    setIsReplacingAuthenticator(true);
-    const setup = await beginAdminAuthenticatorReplacement();
-    setIsReplacingAuthenticator(false);
-    if (setup) {
-      setReplacementTotpSetup(setup);
-      setReplacementTotpCode("");
-    }
-  };
-
-  const handleConfirmAuthenticatorReplacement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!/^\d{6}$/.test(replacementTotpCode)) {
-      toast.error("Enter the current 6-digit code from the newly scanned QR code.");
-      return;
-    }
-    setIsReplacingAuthenticator(true);
-    const result = await confirmAdminAuthenticatorReplacement(replacementTotpCode);
-    setIsReplacingAuthenticator(false);
-    if (result.success) {
-      setReplacementTotpSetup(null);
-      setReplacementTotpCode("");
-      toast.success("Authenticator replaced. The old QR code is no longer valid.");
-    }
-  };
-
-  const handleChangeAdminPin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!/^\d{10,12}$/.test(currentAdminPin) || !/^\d{10,12}$/.test(newAdminPin)) {
-      toast.error("Both Admin PINs must contain 10 to 12 digits.");
-      return;
-    }
-    if (newAdminPin !== confirmAdminPin) {
-      toast.error("New Admin PIN and confirmation do not match.");
-      return;
-    }
-    if (!/^\d{6}$/.test(adminPinTotpCode)) {
-      toast.error("Enter the current six-digit Google Authenticator code.");
-      return;
-    }
-    setIsChangingAdminPin(true);
-    const result = await changeAdminPin(currentAdminPin, newAdminPin, adminPinTotpCode);
-    setIsChangingAdminPin(false);
-    if (!result.success) return;
-    setCurrentAdminPin("");
-    setNewAdminPin("");
-    setConfirmAdminPin("");
-    setAdminPinTotpCode("");
   };
 
   // Drag & drop handlers for homepage containers
@@ -1453,73 +1340,14 @@ export default function AdminDashboardPage() {
                 </span>
               </div>
 
-              {/* External 2FA Provider Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs space-y-3">
-                <div className="flex items-center justify-between font-bold text-slate-800">
-                  <div className="flex items-center space-x-1.5">
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    <span>External Two-Factor Authentication (2FA)</span>
-                  </div>
-                  <span className="font-mono text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                    RFC 6238 TOTP
-                  </span>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <span>Shared login factors are locked</span>
                 </div>
-
                 <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Every admin login requires the current 6-digit code from Google Authenticator, Microsoft Authenticator, Authy, or Apple Passwords. A QR code is shown only while enrolling or replacing an authenticator; it is never displayed as a permanent secret in this dashboard.
+                  The registered Google Authenticator and shared six-digit Admin PIN can only be created or replaced with the separate super-admin setup key. They cannot be changed from this dashboard or during sign-in.
                 </p>
-
-                {!replacementTotpSetup ? (
-                  <button type="button" onClick={handleStartAuthenticatorReplacement} disabled={isReplacingAuthenticator} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-800 hover:bg-slate-100 disabled:opacity-50">
-                    {isReplacingAuthenticator ? "Generating QR code..." : "Replace authenticator and generate new QR"}
-                  </button>
-                ) : (
-                  <form onSubmit={handleConfirmAuthenticatorReplacement} className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-[11px] font-bold text-amber-950">Scan this fresh QR code before it expires. Your existing authenticator remains active until this new code is confirmed.</p>
-                    <Image src={replacementTotpSetup.qrCodeDataUrl} alt="Replacement Google Authenticator QR code" width={176} height={176} unoptimized className="mx-auto h-44 w-44 rounded-lg bg-white p-1" />
-                    <details className="text-[11px] text-amber-950"><summary className="cursor-pointer font-bold">Use the setup key instead</summary><p className="mt-1 break-all font-mono select-all">{replacementTotpSetup.secret}</p></details>
-                    <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="New 6-digit code" value={replacementTotpCode} onChange={(e) => setReplacementTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-amber-300 bg-white p-2 text-center font-mono font-bold tracking-widest text-xs" />
-                    <div className="flex gap-2">
-                      <button type="submit" disabled={isReplacingAuthenticator} className="rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-amber-400 disabled:opacity-50">Confirm new authenticator</button>
-                      <button type="button" onClick={() => { setReplacementTotpSetup(null); setReplacementTotpCode(""); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-700">Cancel</button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Test Verification Sync */}
-                <div className="pt-1 flex items-center gap-2">
-                  <input
-                    type="text"
-                    maxLength={6}
-                    placeholder="Test 6-digit app code..."
-                    value={test2faInput}
-                    onChange={(e) => setTest2faInput(e.target.value)}
-                    className="w-36 p-1.5 rounded-lg border border-slate-200 text-xs font-mono text-center"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleTest2faCode}
-                    disabled={isTesting2fa || test2faInput.length !== 6}
-                    className="py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-colors disabled:opacity-40"
-                  >
-                    {isTesting2fa ? "Verifying..." : "Verify Sync"}
-                  </button>
-                  {test2faStatus && (
-                    <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> {test2faStatus}
-                    </span>
-                  )}
-                </div>
-
-                <form onSubmit={handleChangeAdminPin} className="border-t border-slate-200 pt-3 space-y-2">
-                  <p className="font-bold text-slate-800">Change Admin PIN</p>
-                  <p className="text-[11px] leading-relaxed text-slate-500">Use a private 10 to 12 digit number. To change it, you must know the current PIN and enter a fresh six-digit Google Authenticator code.</p>
-                  <input type="password" inputMode="numeric" autoComplete="current-password" maxLength={12} required value={currentAdminPin} onChange={(e) => setCurrentAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-center font-mono text-xs font-bold tracking-widest" placeholder="Current Admin PIN" />
-                  <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={12} required value={newAdminPin} onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-center font-mono text-xs font-bold tracking-widest" placeholder="New 10 to 12 digit Admin PIN" />
-                  <input type="password" inputMode="numeric" autoComplete="new-password" maxLength={12} required value={confirmAdminPin} onChange={(e) => setConfirmAdminPin(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-center font-mono text-xs font-bold tracking-widest" placeholder="Confirm new Admin PIN" />
-                  <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={adminPinTotpCode} onChange={(e) => setAdminPinTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-slate-200 bg-white p-2 text-center font-mono text-xs font-bold tracking-widest" placeholder="Current 6-digit Authenticator code" />
-                  <button type="submit" disabled={isChangingAdminPin} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-800 hover:bg-slate-100 disabled:opacity-50">{isChangingAdminPin ? "Changing Admin PIN..." : "Change Admin PIN"}</button>
-                </form>
               </div>
 
               {/* Form to change admin password */}

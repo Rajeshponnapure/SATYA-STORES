@@ -22,7 +22,7 @@ The safe release path is:
 - `/ready` checks database readiness and is the Render health probe.
 - If `REDIS_URL` is set, global, authentication, and upload rate limits use shared Redis counters across API replicas. Without it, the server warns that its in-memory limiter is single-instance only.
 - Expired unpaid cart reservations are released during checkout, and payment verification/rejection is idempotent/state-checked to avoid repeated stock deductions.
-- Admin access now uses three independent checks: owner password, a Google Authenticator-compatible TOTP code, and a private 10–12 digit Admin PIN. The PIN is stored as a PBKDF2 hash, never in an environment variable or plain-text database field. Changing it in the console requires the old PIN and a fresh TOTP code. The TOTP secret is AES-256-GCM encrypted before it reaches Supabase. The QR code is short-lived, is generated fresh for each enrollment/replacement, and does not replace a working authenticator until its current code is confirmed.
+- Admin access now uses three independent checks: owner password, one pre-provisioned Google Authenticator-compatible TOTP code, and a pre-provisioned shared six-digit Admin PIN. Neither factor can be created, replaced, or changed by normal login/dashboard users. The owner temporarily enables the separately held `ADMIN_SECURITY_SETUP_KEY` in Render to use `/admin/security-setup`; removing that variable disables the setup actions. The PIN is stored as a PBKDF2 hash and the TOTP secret is AES-256-GCM encrypted before it reaches Supabase. QR codes are short-lived and a pending QR does not replace a working authenticator until its current code is confirmed.
 
 ## Required production configuration
 
@@ -33,6 +33,8 @@ NODE_ENV=production
 FRONTEND_URL=https://store.example.com
 SESSION_SECRET=<at least 32 random characters>
 TOTP_ENCRYPTION_KEY=<different 32+ character secret; do not rotate after enrollment without a recovery plan>
+# Temporary and owner-only; remove after provisioning is complete.
+ADMIN_SECURITY_SETUP_KEY=<different 32+ character secret>
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SECRET_KEY=<server-only key>
 SUPABASE_STORAGE_BUCKET=<existing public Supabase Storage bucket name>
