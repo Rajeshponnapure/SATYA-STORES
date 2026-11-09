@@ -11,7 +11,6 @@
     "hash-password": "tsx scripts/hash-password.ts"
   },
   "dependencies": {
-    "@simplewebauthn/server": "^14.1.0",
     "@supabase/supabase-js": "^2.49.1",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",

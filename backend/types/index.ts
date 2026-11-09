@@ -15,21 +15,6 @@ export interface AdminProfile {
   updatedAt: string;
 }
 
-export interface AdminPasskey {
-  /** Base64URL WebAuthn credential ID. */
-  id: string;
-  /** Base64URL COSE public key; never sent to the browser. */
-  publicKey: string;
-  counter: number;
-  transports?: string[];
-  /** Only device-bound credentials are accepted for the admin account. */
-  deviceType: "singleDevice";
-  backedUp: false;
-  name: string;
-  createdAt: string;
-  lastUsedAt?: string;
-}
-
 export interface User {
   id: string;
   fullName: string;
@@ -46,9 +31,8 @@ export interface User {
   twoFactorEnabled?: boolean;
   twoFactorPendingSecret?: string;
   twoFactorPendingExpiresAt?: string;
-  adminPasskeys?: AdminPasskey[];
-  adminDeviceEnrollmentHash?: string;
-  adminDeviceEnrollmentExpiresAt?: string;
+  /** PBKDF2 hash of the owner-only 10–12 digit PIN. */
+  adminPinHash?: string;
   profileImage?: string;
   createdAt: string;
 }

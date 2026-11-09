@@ -22,8 +22,7 @@ The safe release path is:
 - `/ready` checks database readiness and is the Render health probe.
 - If `REDIS_URL` is set, global, authentication, and upload rate limits use shared Redis counters across API replicas. Without it, the server warns that its in-memory limiter is single-instance only.
 - Expired unpaid cart reservations are released during checkout, and payment verification/rejection is idempotent/state-checked to avoid repeated stock deductions.
-- Admin access now uses three independent checks: owner password, a Google Authenticator-compatible TOTP code, and an approved device-bound passkey or hardware security key. The first device is the one-time bootstrap; later devices must use a single-use ten-minute approval code created from an existing approved device after a fresh TOTP check. The TOTP secret is AES-256-GCM encrypted before it reaches Supabase. The QR code is short-lived, is generated fresh for each enrollment/replacement, and does not replace a working authenticator until its current code is confirmed.
-- WebAuthn challenges are held in short-lived signed HttpOnly cookies rather than process memory, so device verification remains correct if a load balancer sends the next request to another API instance. This does not remove the database transaction/Redis scale prerequisites below.
+- Admin access now uses three independent checks: owner password, a Google Authenticator-compatible TOTP code, and a private 10–12 digit Admin PIN. The PIN is stored as a PBKDF2 hash, never in an environment variable or plain-text database field. Changing it in the console requires the old PIN and a fresh TOTP code. The TOTP secret is AES-256-GCM encrypted before it reaches Supabase. The QR code is short-lived, is generated fresh for each enrollment/replacement, and does not replace a working authenticator until its current code is confirmed.
 
 ## Required production configuration
 
@@ -47,7 +46,7 @@ Generate a session secret with `node -e "console.log(require('crypto').randomByt
 
 `FRONTEND_URL` supports a comma-separated, exact allowlist when a separate staging frontend is needed. Never use wildcard origins with credentialed cookies.
 
-For the current deployment, `FRONTEND_URL` must be the exact Vercel URL such as `https://satya-stores-zeta.vercel.app`—no trailing slash. Passkeys use that URL and hostname automatically. Only set `ADMIN_WEBAUTHN_ORIGIN` or `ADMIN_WEBAUTHN_RP_ID` if you later move the storefront to a custom domain; both must match the public HTTPS site exactly.
+For the current deployment, `FRONTEND_URL` must be the exact Vercel URL such as `https://satya-stores-zeta.vercel.app`—no trailing slash.
 
 ## CDN and request topology
 
@@ -103,5 +102,5 @@ For checkout, use separate low-rate tests with isolated test inventory and provi
 - Use at least two API instances only after the database adapter has been transactional and Redis-backed; protect them with a managed load balancer and health checks.
 - Add structured logs with request IDs, metrics, traces, uptime alerts, database slow-query monitoring, and a protected error tracker. Do not log passwords, session cookies, payment evidence, full UTRs, or authorization headers.
 - Keep Supabase RLS enabled and do not expose its service-role key to the frontend. Apply `backend/migrations/20261108_lock_down_public_access.sql` where it has not already been applied.
-- Apply `backend/migrations/20261109_add_user_2fa_columns.sql` and `backend/migrations/20261109_admin_mfa_and_passkeys.sql` before deploying the admin MFA feature, so encrypted authenticator state and approved device records survive API restarts.
+- Apply `backend/migrations/20261109_add_user_2fa_columns.sql`, `backend/migrations/20261109_admin_mfa_and_passkeys.sql`, and `backend/migrations/20261109_admin_pin_auth.sql` before deploying the admin MFA feature, so encrypted authenticator state and the hashed Admin PIN survive API restarts.
 - Schedule dependency, secret, and staging security scans in CI. Block deployment on critical/high dependency findings or a failed load-test gate.

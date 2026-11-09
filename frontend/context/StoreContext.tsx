@@ -29,7 +29,6 @@ import {
   initialHomepageSections,
 } from "@/lib/initialData";
 import { toast } from "sonner";
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 interface RazorpayPaymentResponse {
   razorpay_order_id: string;
@@ -46,9 +45,8 @@ interface AdminLoginResult {
   error?: string;
   requiresTotpSetup?: boolean;
   requiresTotp?: boolean;
-  requiresPasskey?: boolean;
-  requiresDeviceRegistration?: boolean;
-  hasApprovedDevice?: boolean;
+  requiresAdminPin?: boolean;
+  requiresAdminPinSetup?: boolean;
 }
 
 interface TotpSetupResponse {
@@ -57,20 +55,6 @@ interface TotpSetupResponse {
   otpauthUri: string;
   qrCodeDataUrl: string;
   expiresAt: string;
-}
-
-interface AdminPasskeyDevice {
-  id: string;
-  name: string;
-  createdAt: string;
-  lastUsedAt?: string;
-}
-
-interface AdminDeviceEnrollmentResult {
-  success: boolean;
-  code?: string;
-  expiresAt?: string;
-  error?: string;
 }
 
 declare global {
@@ -142,8 +126,7 @@ interface StoreContextType {
   beginAdminAuthenticatorReplacement: () => Promise<TotpSetupResponse | null>;
   confirmAdminAuthenticatorReplacement: (code: string) => Promise<{ success: boolean; error?: string }>;
   verifyAdminLoginTotp: (code: string) => Promise<AdminLoginResult>;
-  completeAdminPasskey: (mode: "authenticate" | "register", deviceName?: string) => Promise<{ success: boolean; error?: string }>;
-  approveAdminPasskeyEnrollment: (code: string) => Promise<{ success: boolean; error?: string }>;
+  completeAdminPin: (mode: "setup" | "verify", pin: string) => Promise<{ success: boolean; error?: string }>;
   adminLogout: () => Promise<void>;
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
@@ -170,14 +153,11 @@ interface StoreContextType {
   adminProfile: AdminProfile | null;
   fetchAdminProfile: () => Promise<AdminProfile | null>;
   updateAdminProfile: (updates: Partial<AdminProfile>) => Promise<boolean>;
-  adminPasskeys: AdminPasskeyDevice[];
-  fetchAdminPasskeys: () => Promise<void>;
-  revokeAdminPasskey: (id: string) => Promise<boolean>;
-  createAdminPasskeyEnrollmentCode: (totpCode: string) => Promise<AdminDeviceEnrollmentResult>;
-  fetchAdmin2faSetup: () => Promise<{ success: boolean; twoFactorEnabled: boolean; deviceCount: number } | null>;
+  fetchAdmin2faSetup: () => Promise<{ success: boolean; twoFactorEnabled: boolean; adminPinConfigured: boolean } | null>;
   verifyAdmin2faCode: (code: string) => Promise<{ success: boolean; valid: boolean; method?: string; error?: string }>;
   generateAdmin2fa: () => Promise<{ success: boolean; otp?: string; message?: string }>;
   adminChangePasswordWith2FA: (currentPassword: string, newPassword: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
+  changeAdminPin: (currentPin: string, newPin: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
   uploadImage: (fileName: string, fileData: string) => Promise<{ success: boolean; url?: string; error?: string }>;
 
   // Admin Catalog & Operations
@@ -218,7 +198,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
-  const [adminPasskeys, setAdminPasskeys] = useState<AdminPasskeyDevice[]>([]);
 
   // Coupons
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -984,47 +963,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeAdminPasskey = async (mode: "authenticate" | "register", deviceName?: string): Promise<{ success: boolean; error?: string }> => {
+  const completeAdminPin = async (mode: "setup" | "verify", pin: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const prefix = "/api/admin/login/passkey";
-      const optionsRes = await fetch(`${prefix}/${mode === "register" ? "register/" : ""}options`, { method: "POST" });
-      const optionsData = await optionsRes.json();
-      if (!optionsRes.ok || !optionsData.success) return { success: false, error: optionsData.error || "Unable to start device verification." };
-
-      const response = mode === "register"
-        ? await startRegistration({ optionsJSON: optionsData.options })
-        : await startAuthentication({ optionsJSON: optionsData.options });
-      const verifyRes = await fetch(`${prefix}/${mode === "register" ? "register/" : ""}verify`, {
+      const res = await fetch(`/api/admin/login/${mode === "setup" ? "setup" : "verify"}-pin`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response, deviceName }),
+        body: JSON.stringify({ pin }),
       });
-      const verified = await verifyRes.json();
-      if (!verifyRes.ok || !verified.success) return { success: false, error: verified.error || "This device was not approved." };
+      const data = await res.json();
+      if (!res.ok || !data.success) return { success: false, error: data.error || "The Admin PIN was not accepted." };
 
       setIsAdminAuthenticated(true);
       localStorage.setItem("satya_admin_auth", "true");
-      toast.success(mode === "register" ? "This device is now approved." : "Approved device verified.");
+      toast.success(mode === "setup" ? "Admin PIN configured." : "Admin PIN verified.");
       return { success: true };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "The device verification was cancelled or failed.";
-      return { success: false, error: message };
-    }
-  };
-
-  const approveAdminPasskeyEnrollment = async (code: string): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const res = await fetch("/api/admin/login/passkey/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
-      return res.ok && data.success
-        ? { success: true }
-        : { success: false, error: data.error || "This device was not approved." };
     } catch {
-      return { success: false, error: "Could not approve this device." };
+      return { success: false, error: "Could not verify the Admin PIN." };
     }
   };
 
@@ -1151,7 +1105,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const fetchAdmin2faSetup = useCallback(async (): Promise<{
     success: boolean;
     twoFactorEnabled: boolean;
-    deviceCount: number;
+    adminPinConfigured: boolean;
   } | null> => {
     try {
       const res = await fetch("/api/admin/2fa-setup");
@@ -1215,49 +1169,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const fetchAdminPasskeys = useCallback(async (): Promise<void> => {
+  const changeAdminPin = async (currentPin: string, newPin: string, twoFactorCode: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const res = await fetch("/api/admin/passkeys");
-      const data = await res.json();
-      if (res.ok && data.success && Array.isArray(data.devices)) {
-        setAdminPasskeys(data.devices as AdminPasskeyDevice[]);
-      }
-    } catch {
-      // The profile can still be used if this optional security inventory is unavailable.
-    }
-  }, []);
-
-  const revokeAdminPasskey = async (id: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`/api/admin/passkeys/${encodeURIComponent(id)}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        toast.error(data.error || "Could not remove the approved device.");
-        return false;
-      }
-      setAdminPasskeys((devices) => devices.filter((device) => device.id !== id));
-      toast.success("Approved device removed. It can no longer sign in.");
-      return true;
-    } catch {
-      toast.error("Could not remove the approved device.");
-      return false;
-    }
-  };
-
-  const createAdminPasskeyEnrollmentCode = async (totpCode: string): Promise<AdminDeviceEnrollmentResult> => {
-    try {
-      const res = await fetch("/api/admin/passkeys/enrollment-code", {
+      const res = await fetch("/api/admin/change-pin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ totpCode }),
+        body: JSON.stringify({ currentPin, newPin, twoFactorCode }),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) {
-        return { success: false, error: data.error || "Could not create a device approval code." };
+      if (res.ok && data.success) {
+        toast.success("Admin PIN changed successfully.");
+        return { success: true };
       }
-      return data as AdminDeviceEnrollmentResult;
+      toast.error(data.error || "Could not change the Admin PIN.");
+      return { success: false, error: data.error };
     } catch {
-      return { success: false, error: "Could not create a device approval code." };
+      toast.error("Could not change the Admin PIN.");
+      return { success: false, error: "Network error changing Admin PIN." };
     }
   };
 
@@ -1725,8 +1653,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         beginAdminAuthenticatorReplacement,
         confirmAdminAuthenticatorReplacement,
         verifyAdminLoginTotp,
-        completeAdminPasskey,
-        approveAdminPasskeyEnrollment,
+        completeAdminPin,
         adminLogout,
         adminUsers,
         fetchAdminUsers,
@@ -1737,14 +1664,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         adminProfile,
         fetchAdminProfile,
         updateAdminProfile,
-        adminPasskeys,
-        fetchAdminPasskeys,
-        revokeAdminPasskey,
-        createAdminPasskeyEnrollmentCode,
         fetchAdmin2faSetup,
         verifyAdmin2faCode,
         generateAdmin2fa,
         adminChangePasswordWith2FA,
+        changeAdminPin,
         uploadImage,
         addProduct,
         updateProduct,

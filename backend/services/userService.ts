@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { getDatabase, saveDatabase, initialAdminProfile } from "../db/database";
-import { User, Address, Review, AdminProfile, AdminPasskey } from "../types";
+import { User, Address, Review, AdminProfile } from "../types";
 import { hashPassword, verifyPassword, generateOtp } from "../utils/auth";
 
 interface PasswordResetToken {
@@ -73,16 +73,11 @@ function decryptTotpSecret(stored: string): { secret: string; wasLegacyPlaintext
   return { secret, wasLegacyPlaintext: false };
 }
 
-function enrollmentCodeDigest(code: string): string {
-  const material = process.env.SESSION_SECRET || process.env.ADMIN_SESSION_SECRET;
-  if (!material || material.length < 32) throw new Error("A strong session secret is required.");
-  return crypto.createHmac("sha256", material).update(`satya-stores:device-enrollment:v1:${code}`).digest("hex");
-}
-
-function sameDigest(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, "hex");
-  const rightBuffer = Buffer.from(right, "hex");
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+function validateAdminPin(pin: string): string | undefined {
+  if (!/^\d{10,12}$/.test(pin)) return "Admin PIN must contain exactly 10 to 12 digits.";
+  if (/^(\d)\1+$/.test(pin)) return "Choose an Admin PIN that is not the same digit repeated.";
+  if (["0123456789", "1234567890", "9876543210"].includes(pin)) return "Choose a less predictable Admin PIN.";
+  return undefined;
 }
 
 function verifyTOTP(token: string, secret: string, window = 1, timeStep = 30): boolean {
@@ -151,7 +146,7 @@ export const userService = {
     }
 
     // Strip passwords before returning
-    const safeUsers = users.map(({ password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...rest }) => rest);
+    const safeUsers = users.map(({ password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...rest }) => rest);
     return { users: safeUsers, total: users.length };
   },
 
@@ -159,7 +154,7 @@ export const userService = {
     const db = await getDatabase();
     const user = (db.users || []).find((u) => u.id === id);
     if (!user) return null;
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = user;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = user;
     return safeUser;
   },
 
@@ -205,7 +200,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = newUser;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -252,7 +247,7 @@ export const userService = {
       };
     }
 
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = user;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = user;
     return {
       success: true,
       user: safeUser,
@@ -325,7 +320,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = newUser;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -378,7 +373,7 @@ export const userService = {
     }
 
     await saveDatabase(db);
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = current;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = current;
     return { success: true, user: safeUser };
   },
 
@@ -412,7 +407,7 @@ export const userService = {
 
     db.users[idx] = { ...db.users[idx], ...updates };
     await saveDatabase(db);
-    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = db.users[idx];
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPinHash, ...safeUser } = db.users[idx];
     return { success: true, user: safeUser };
   },
 
@@ -552,14 +547,14 @@ export const userService = {
     return { success: true, profile: { ...db.adminProfile, twoFactorSecret: undefined, twoFactorPin: undefined } };
   },
 
-  async getAdminSecurityStatus(): Promise<{ success: boolean; twoFactorEnabled: boolean; deviceCount: number }> {
+  async getAdminSecurityStatus(): Promise<{ success: boolean; twoFactorEnabled: boolean; adminPinConfigured: boolean }> {
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
     if (!adminUser) throw new Error("Administrative account is not configured.");
     return {
       success: true,
       twoFactorEnabled: Boolean(adminUser.twoFactorEnabled && adminUser.twoFactorSecret),
-      deviceCount: (adminUser.adminPasskeys || []).length,
+      adminPinConfigured: Boolean(adminUser.adminPinHash),
     };
   },
 
@@ -640,86 +635,39 @@ export const userService = {
     }
   },
 
-  async getAdminPasskeys(): Promise<AdminPasskey[]> {
-    const db = await getDatabase();
-    return ownerFromDatabase(db)?.adminPasskeys || [];
-  },
-
-  async listAdminPasskeys(): Promise<Array<Pick<AdminPasskey, "id" | "name" | "createdAt" | "lastUsedAt">>> {
-    const passkeys = await this.getAdminPasskeys();
-    return passkeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt }));
-  },
-
-  async addAdminPasskey(passkey: AdminPasskey): Promise<void> {
-    const db = await getDatabase();
-    const adminUser = ownerFromDatabase(db);
-    if (!adminUser) throw new Error("Administrative account is not configured.");
-    const existing = adminUser.adminPasskeys || [];
-    if (existing.some((item) => item.id === passkey.id)) throw new Error("This device is already registered.");
-    adminUser.adminPasskeys = [...existing, passkey];
-    await saveDatabase(db);
-  },
-
-  async updateAdminPasskeyUsage(id: string, counter: number): Promise<void> {
-    const db = await getDatabase();
-    const adminUser = ownerFromDatabase(db);
-    if (!adminUser) throw new Error("Administrative account is not configured.");
-    const passkey = (adminUser.adminPasskeys || []).find((item) => item.id === id);
-    if (!passkey) throw new Error("Approved device was not found.");
-    passkey.counter = counter;
-    passkey.lastUsedAt = new Date().toISOString();
-    await saveDatabase(db);
-  },
-
-  async removeAdminPasskey(id: string): Promise<{ success: boolean; error?: string }> {
+  async setInitialAdminPin(pin: string): Promise<{ success: boolean; error?: string }> {
+    const validationError = validateAdminPin(pin);
+    if (validationError) return { success: false, error: validationError };
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
     if (!adminUser) return { success: false, error: "Administrative account is not configured." };
-    const passkeys = adminUser.adminPasskeys || [];
-    if (!passkeys.some((item) => item.id === id)) return { success: false, error: "Approved device was not found." };
-    adminUser.adminPasskeys = passkeys.filter((item) => item.id !== id);
+    if (adminUser.adminPinHash) return { success: false, error: "An Admin PIN is already configured." };
+    adminUser.adminPinHash = hashPassword(pin);
     await saveDatabase(db);
     return { success: true };
   },
 
-  async createAdminDeviceEnrollment(totpCode: string): Promise<{ success: boolean; code?: string; expiresAt?: string; error?: string }> {
-    const totp = await this.verifyAdminTotp(totpCode);
-    if (!totp.success) return totp;
-
+  async verifyAdminPin(pin: string): Promise<{ success: boolean; error?: string }> {
+    if (!/^\d{10,12}$/.test(pin)) return { success: false, error: "Enter your 10 to 12 digit Admin PIN." };
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
-    if (!adminUser || !(adminUser.adminPasskeys || []).length) {
-      return { success: false, error: "Approve your first device before adding another one." };
-    }
-
-    const code = crypto.randomInt(10_000_000, 100_000_000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    adminUser.adminDeviceEnrollmentHash = enrollmentCodeDigest(code);
-    adminUser.adminDeviceEnrollmentExpiresAt = expiresAt;
-    await saveDatabase(db);
-    return { success: true, code, expiresAt };
+    if (!adminUser?.adminPinHash) return { success: false, error: "Set up an Admin PIN before continuing." };
+    return verifyPassword(pin, adminUser.adminPinHash)
+      ? { success: true }
+      : { success: false, error: "The Admin PIN is not correct." };
   },
 
-  async approveAdminDeviceEnrollment(code: string): Promise<{ success: boolean; error?: string }> {
-    if (!/^\d{8}$/.test(code)) return { success: false, error: "Enter the eight-digit approval code from an approved device." };
+  async changeAdminPin(currentPin: string, newPin: string, totpCode: string): Promise<{ success: boolean; error?: string }> {
+    const validationError = validateAdminPin(newPin);
+    if (validationError) return { success: false, error: validationError };
+    const totp = await this.verifyAdminTotp(totpCode);
+    if (!totp.success) return totp;
     const db = await getDatabase();
     const adminUser = ownerFromDatabase(db);
-    const stored = adminUser?.adminDeviceEnrollmentHash;
-    const expiresAt = adminUser?.adminDeviceEnrollmentExpiresAt ? Date.parse(adminUser.adminDeviceEnrollmentExpiresAt) : 0;
-    if (!adminUser || !stored || !Number.isFinite(expiresAt) || Date.now() > expiresAt) {
-      return { success: false, error: "That device-approval code has expired. Generate a new one from an approved device." };
+    if (!adminUser?.adminPinHash || !verifyPassword(currentPin, adminUser.adminPinHash)) {
+      return { success: false, error: "Current Admin PIN is not correct." };
     }
-
-    let valid = false;
-    try {
-      valid = sameDigest(enrollmentCodeDigest(code), stored);
-    } catch {
-      return { success: false, error: "Device approval is temporarily unavailable." };
-    }
-    if (!valid) return { success: false, error: "That device-approval code is not correct." };
-
-    adminUser.adminDeviceEnrollmentHash = undefined;
-    adminUser.adminDeviceEnrollmentExpiresAt = undefined;
+    adminUser.adminPinHash = hashPassword(newPin);
     await saveDatabase(db);
     return { success: true };
   },

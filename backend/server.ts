@@ -12,7 +12,6 @@ import { razorpayService } from "./services/razorpayService";
 import { inventoryService } from "./services/inventoryService";
 import { deliveryService } from "./services/deliveryService";
 import { userService } from "./services/userService";
-import { adminPasskeyService } from "./services/adminPasskeyService";
 import { cmsService } from "./services/cmsService";
 import { getDatabase, saveDatabase } from "./db/database";
 import { initialPromotions } from "./db/initialData";
@@ -23,16 +22,12 @@ import { createRateLimitStore, hasDistributedRateLimits } from "./utils/rateLimi
 import {
   clearAdminSession,
   clearCustomerSession,
-  hasAdminPasskeyEnrollment,
-  getAdminPasskeyChallenge,
   getCustomerSessionId,
   getAdminPreAuthStage,
   hasAdminSession,
   requireAdminSession,
   requireCustomerSession,
   setAdminSession,
-  setAdminPasskeyChallenge,
-  setAdminPasskeyEnrollment,
   setAdminPreAuth,
   setCustomerSession,
   isSessionSecretConfigured,
@@ -279,13 +274,13 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
       return res.json({ success: true, requiresTotpSetup: true });
     }
     setAdminPreAuth(res, "totp");
-    res.json({ success: true, requiresTotp: true, hasApprovedDevice: security.deviceCount > 0 });
+    res.json({ success: true, requiresTotp: true });
   } catch (err: any) {
     respondInternalError(res, err);
   }
 });
 
-function requireAdminPreAuth(req: Request, res: Response, stage: "totp-setup" | "totp" | "passkey"): boolean {
+function requireAdminPreAuth(req: Request, res: Response, stage: "totp-setup" | "totp" | "pin-setup" | "pin"): boolean {
   if (getAdminPreAuthStage(req) === stage) return true;
   res.status(401).json({ success: false, error: "Start the admin sign-in process again." });
   return false;
@@ -316,9 +311,9 @@ app.post("/api/admin/login/confirm-totp", async (req: Request, res: Response) =>
     if (!requireAdminPreAuth(req, res, "totp-setup")) return;
     const result = await userService.confirmAdminTotpSetup(String(req.body?.code || ""));
     if (!result.success) return res.status(400).json(result);
-    setAdminPreAuth(res, "passkey");
     const security = await userService.getAdminSecurityStatus();
-    res.json({ success: true, requiresPasskey: true, requiresDeviceRegistration: security.deviceCount === 0 });
+    setAdminPreAuth(res, security.adminPinConfigured ? "pin" : "pin-setup");
+    res.json({ success: true, requiresAdminPin: true, requiresAdminPinSetup: !security.adminPinConfigured });
   } catch (err: any) {
     respondInternalError(res, err);
   }
@@ -330,61 +325,21 @@ app.post("/api/admin/login/verify-totp", async (req: Request, res: Response) => 
     if (!requireAdminPreAuth(req, res, "totp")) return;
     const result = await userService.verifyAdminTotp(String(req.body?.code || ""));
     if (!result.success) return res.status(401).json(result);
-    setAdminPreAuth(res, "passkey");
     const security = await userService.getAdminSecurityStatus();
-    res.json({ success: true, requiresPasskey: true, requiresDeviceRegistration: security.deviceCount === 0 });
+    setAdminPreAuth(res, security.adminPinConfigured ? "pin" : "pin-setup");
+    res.json({ success: true, requiresAdminPin: true, requiresAdminPinSetup: !security.adminPinConfigured });
   } catch (err: any) {
     respondInternalError(res, err);
   }
 });
 
-// A passkey is device-bound. Registering a new device is allowed only after
-// initial bootstrap or a short approval code created on an existing device.
-async function mayRegisterAdminPasskey(req: Request): Promise<boolean> {
-  const hasAnyPasskey = (await userService.getAdminPasskeys()).length > 0;
-  return !hasAnyPasskey || hasAdminPasskeyEnrollment(req);
-}
-
-app.post("/api/admin/login/passkey/approve", async (req: Request, res: Response) => {
+// First-time setup has one additional screen so the owner chooses a strong
+// 10–12 digit PIN. The browser never receives or stores its PBKDF2 hash.
+app.post("/api/admin/login/setup-pin", async (req: Request, res: Response) => {
   try {
-    if (!requireAdminPreAuth(req, res, "passkey")) return;
-    const result = await userService.approveAdminDeviceEnrollment(String(req.body?.code || ""));
-    if (!result.success) return res.status(401).json(result);
-    if (!setAdminPasskeyEnrollment(res)) {
-      return res.status(503).json({ success: false, error: "Secure session configuration is unavailable." });
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.post("/api/admin/login/passkey/register/options", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "passkey")) return;
-    if (!await mayRegisterAdminPasskey(req)) {
-      return res.status(403).json({ success: false, error: "Use an approved device to create a temporary enrollment code before registering this device." });
-    }
-    const options = await adminPasskeyService.registrationOptions();
-    if (!setAdminPasskeyChallenge(res, "registration", options.challenge)) {
-      return res.status(503).json({ success: false, error: "Secure session configuration is unavailable." });
-    }
-    res.json({ success: true, options });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err instanceof Error ? err.message : "Unable to start device registration." });
-  }
-});
-
-app.post("/api/admin/login/passkey/register/verify", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "passkey")) return;
-    if (!await mayRegisterAdminPasskey(req)) {
-      return res.status(403).json({ success: false, error: "This device enrollment was not approved." });
-    }
-    const challenge = getAdminPasskeyChallenge(req, "registration");
-    if (!challenge) return res.status(401).json({ success: false, error: "Start device registration again." });
-    const result = await adminPasskeyService.verifyRegistration(req.body?.response, challenge, req.body?.deviceName);
-    if (!result.verified) return res.status(400).json({ success: false, error: result.error });
+    if (!requireAdminPreAuth(req, res, "pin-setup")) return;
+    const result = await userService.setInitialAdminPin(String(req.body?.pin || ""));
+    if (!result.success) return res.status(400).json(result);
     if (!setAdminSession(res)) return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
     res.json({ success: true, isAdmin: true });
   } catch (err: any) {
@@ -392,26 +347,11 @@ app.post("/api/admin/login/passkey/register/verify", async (req: Request, res: R
   }
 });
 
-app.post("/api/admin/login/passkey/options", async (req: Request, res: Response) => {
+app.post("/api/admin/login/verify-pin", async (req: Request, res: Response) => {
   try {
-    if (!requireAdminPreAuth(req, res, "passkey")) return;
-    const options = await adminPasskeyService.authenticationOptions();
-    if (!setAdminPasskeyChallenge(res, "authentication", options.challenge)) {
-      return res.status(503).json({ success: false, error: "Secure session configuration is unavailable." });
-    }
-    res.json({ success: true, options });
-  } catch (err: any) {
-    res.status(400).json({ success: false, error: err instanceof Error ? err.message : "Unable to start device verification." });
-  }
-});
-
-app.post("/api/admin/login/passkey/verify", async (req: Request, res: Response) => {
-  try {
-    if (!requireAdminPreAuth(req, res, "passkey")) return;
-    const challenge = getAdminPasskeyChallenge(req, "authentication");
-    if (!challenge) return res.status(401).json({ success: false, error: "Start device verification again." });
-    const result = await adminPasskeyService.verifyAuthentication(req.body?.response, challenge);
-    if (!result.verified) return res.status(401).json({ success: false, error: result.error });
+    if (!requireAdminPreAuth(req, res, "pin")) return;
+    const result = await userService.verifyAdminPin(String(req.body?.pin || ""));
+    if (!result.success) return res.status(401).json(result);
     if (!setAdminSession(res)) return res.status(503).json({ success: false, error: "Admin session signing is not configured." });
     res.json({ success: true, isAdmin: true });
   } catch (err: any) {
@@ -493,36 +433,6 @@ app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
 });
 
 // Admin Profile Endpoints
-app.get("/api/admin/passkeys", async (_req: Request, res: Response) => {
-  try {
-    res.json({ success: true, devices: await userService.listAdminPasskeys() });
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-app.delete("/api/admin/passkeys/:id", async (req: Request, res: Response) => {
-  try {
-    const result = await userService.removeAdminPasskey(String(req.params.id));
-    if (!result.success) return res.status(404).json(result);
-    res.json(result);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
-// An existing trusted device, plus a fresh TOTP code, is required to add a
-// different physical device. The resulting code is single-use and expires.
-app.post("/api/admin/passkeys/enrollment-code", async (req: Request, res: Response) => {
-  try {
-    const result = await userService.createAdminDeviceEnrollment(String(req.body?.totpCode || ""));
-    if (!result.success) return res.status(400).json(result);
-    res.json(result);
-  } catch (err: any) {
-    respondInternalError(res, err);
-  }
-});
-
 app.get("/api/admin/profile", async (_req: Request, res: Response) => {
   try {
     const profile = await userService.getAdminProfile();
@@ -584,6 +494,20 @@ app.post("/api/admin/verify-2fa", async (req: Request, res: Response) => {
     }
     const result = await userService.verifyAdmin2faCode(code);
     res.json(result);
+  } catch (err: any) {
+    respondInternalError(res, err);
+  }
+});
+
+app.post("/api/admin/change-pin", async (req: Request, res: Response) => {
+  try {
+    const { currentPin, newPin, twoFactorCode } = req.body || {};
+    if (typeof currentPin !== "string" || typeof newPin !== "string" || typeof twoFactorCode !== "string") {
+      return res.status(400).json({ success: false, error: "Current PIN, new PIN, and authenticator code are required." });
+    }
+    const result = await userService.changeAdminPin(currentPin, newPin, twoFactorCode);
+    if (!result.success) return res.status(400).json(result);
+    res.json({ success: true });
   } catch (err: any) {
     respondInternalError(res, err);
   }
