@@ -684,7 +684,14 @@ export const initialUsers: User[] = [
     fullName: "Satya Store Owner",
     email: "admin@sathyastores.com",
     mobileNumber: "+91 98480 22338",
-    password: hashPassword(process.env.ADMIN_PASSWORD || "admin123"),
+    // A development seed must never create a predictable owner password. Configure
+    // ADMIN_PASSWORD explicitly for a disposable local database, or create the
+    // owner account from a private hash as described in the production guide.
+    password: hashPassword(
+      process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 12
+        ? process.env.ADMIN_PASSWORD
+        : crypto.randomBytes(32).toString("hex")
+    ),
     role: "owner",
     mobileVerified: true,
     emailVerified: true,

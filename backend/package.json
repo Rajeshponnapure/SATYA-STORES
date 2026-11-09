@@ -17,15 +17,19 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.2",
     "@vercel/blob": "^2.8.2",
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.3",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
+    "rate-limit-redis": "^6.0.2",
     "razorpay": "^2.9.8",
     "typescript": "^5.7.0"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "tsx": "^4.19.3"
   },
   "overrides": {

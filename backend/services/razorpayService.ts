@@ -10,13 +10,13 @@ try {
   // Razorpay module not present in this environment
 }
 
-const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || (process.env.NODE_ENV === "production" ? "" : "rzp_test_satyaStore123");
-const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || (process.env.NODE_ENV === "production" ? "" : "satyaStoreSecretKey456");
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
 const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || "";
 
 // Initialize Razorpay Client
 let razorpayClient: any = null;
-if (RazorpayClass) {
+if (RazorpayClass && RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
   try {
     razorpayClient = new RazorpayClass({
       key_id: RAZORPAY_KEY_ID,
@@ -47,7 +47,7 @@ export const razorpayService = {
       const amountInPaise = Math.round(amount * 100);
 
       // Try creating order via Razorpay API
-      if (razorpayClient && !RAZORPAY_KEY_ID.includes("satyaStore123")) {
+      if (razorpayClient && RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET) {
         try {
           const rzpOrder = await razorpayClient.orders.create({
             amount: amountInPaise,
@@ -89,7 +89,8 @@ export const razorpayService = {
         keyId: RAZORPAY_KEY_ID,
       };
     } catch (error: any) {
-      return { success: false, error: error.message || "Failed to create Razorpay order" };
+      console.error("[Razorpay] Order creation failed:", error);
+      return { success: false, error: "Unable to start the Razorpay payment. Please try again." };
     }
   },
 
@@ -140,6 +141,9 @@ export const razorpayService = {
         return { success: false, error: "Order not found" };
       }
       if (order.paymentStatus === "Verified") return { success: true, order };
+      if (order.paymentStatus !== "Awaiting Payment") {
+        return { success: false, error: "This order is not accepting a Razorpay payment." };
+      }
 
       // Finalize stock deduction & clear reservation
       for (const item of order.itemsSnapshot) {
@@ -180,7 +184,8 @@ export const razorpayService = {
       await saveDatabase(db);
       return { success: true, order };
     } catch (error: any) {
-      return { success: false, error: error.message || "Failed to verify Razorpay payment" };
+      console.error("[Razorpay] Payment verification failed:", error);
+      return { success: false, error: "Unable to verify the Razorpay payment." };
     }
   },
 
@@ -221,7 +226,8 @@ export const razorpayService = {
         razorpayClient &&
         order.razorpayPaymentId &&
         !order.razorpayPaymentId.startsWith("pay_test_") &&
-        !RAZORPAY_KEY_ID.includes("satyaStore123")
+        RAZORPAY_KEY_ID &&
+        RAZORPAY_KEY_SECRET
       ) {
         try {
           refundRecord = await razorpayClient.payments.refund(order.razorpayPaymentId, {
@@ -294,7 +300,8 @@ export const razorpayService = {
       await saveDatabase(db);
       return { success: true, order, refund: refundRecord };
     } catch (error: any) {
-      return { success: false, error: error.message || "Failed to process refund" };
+      console.error("[Razorpay] Refund processing failed:", error);
+      return { success: false, error: "Unable to process the Razorpay refund." };
     }
   },
 

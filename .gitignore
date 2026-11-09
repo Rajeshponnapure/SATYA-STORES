@@ -18,8 +18,15 @@ coverage/
 # local env & runtime data
 .env*.local
 .env
+.env.*
+!.env.example
 data/
 **/data/*.json
+
+# private credentials and certificates
+*.pem
+*.key
+id_rsa
 
 # logs
 *.log*

@@ -62,8 +62,8 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters long.");
+    if (newPassword.length < 12) {
+      toast.error("Password must be at least 12 characters long.");
       return;
     }
 
@@ -206,7 +206,8 @@ export default function ForgotPasswordPage() {
                 <input
                   type={showNewPassword ? "text" : "password"}
                   required
-                  placeholder="At least 6 characters"
+                  minLength={12}
+                  placeholder="At least 12 characters"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 focus:bg-white transition-all"

@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS admin_profile (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT false;
 ALTER TABLE admin_profile ADD COLUMN IF NOT EXISTS profile_image TEXT;
 
 -- 5. Orders Table (Immutable Snapshot)

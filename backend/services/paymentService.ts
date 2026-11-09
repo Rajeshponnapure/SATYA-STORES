@@ -43,6 +43,12 @@ export const paymentService = {
     if (!order) {
       return { success: false, error: "Order not found" };
     }
+    if (order.paymentStatus === "Verified") {
+      return { success: true, order };
+    }
+    if (order.paymentStatus !== "Verification Pending") {
+      return { success: false, error: "Only submitted payment details can be verified." };
+    }
 
     // Finalize physical stock deduction & clear reservation
     for (const item of order.itemsSnapshot) {
@@ -91,6 +97,9 @@ export const paymentService = {
 
     if (!order) {
       return { success: false, error: "Order not found" };
+    }
+    if (order.paymentStatus !== "Verification Pending") {
+      return { success: false, error: "Only submitted payment details can be rejected." };
     }
 
     // Release stock reservation back to free inventory

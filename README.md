@@ -163,6 +163,7 @@ The backend URL defaults to port 5000 in local development. Set it when the API 
 PORT=5000
 FRONTEND_URL=http://localhost:3000
 SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
+REDIS_URL=rediss://<managed-redis-endpoint>
 
 # Local or Vercel Supabase backend credentials (never put the secret key in frontend/.env.local)
 SUPABASE_URL=https://your-project.supabase.co
@@ -175,14 +176,14 @@ RAZORPAY_KEY_SECRET=
 RAZORPAY_WEBHOOK_SECRET=
 ~~~
 
-Keep the admin-session secret and Razorpay secret on the backend. Configure database credentials and Supabase row-level security for the intended deployment.
+Keep the admin-session secret, Redis URL, and Razorpay secret on the backend. Configure database credentials and Supabase row-level security for the intended deployment. See `docs/PRODUCTION_READINESS.md` for the production topology, cache policy, and scale gates.
 
 ## Deploy — Vercel (frontend) + Render (backend)
 
-- **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/api` session cookies keep working.
-- **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/api/health`.
-- Backend environment variables on Render: `FRONTEND_URL` (the deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
-- **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Product and profile images go to Vercel Blob when `BLOB_READ_WRITE_TOKEN` is set; otherwise they are stored inline in the database. Images are limited to 3 MB.
+- **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/` session cookies keep working. Public catalog responses now carry short edge-cache directives.
+- **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/ready`.
+- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `REDIS_URL` (mandatory when running more than one API instance), `BLOB_READ_WRITE_TOKEN`, and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
+- **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads require `BLOB_READ_WRITE_TOKEN` and Vercel Blob; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.
 - If Razorpay webhooks are configured, point the webhook URL at `https://<the-vercel-domain>/api/payments/razorpay/webhook` (the frontend proxies it to the backend).
 
 ## Database setup
@@ -195,7 +196,7 @@ Without Supabase credentials, the backend persists data to backend/data/database
 
 1. Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in backend/.env. The secret key is backend-only and bypasses RLS; never expose it to the browser.
 2. For a new project, run backend/schema.sql in the Supabase SQL editor.
-3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql` and the profile-image migration in the Supabase SQL editor.
+3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql`, `backend/migrations/20261107_profile_images.sql`, and `backend/migrations/20261109_add_user_2fa_columns.sql` in the Supabase SQL editor.
 4. Generate a new admin password hash with `cd backend` then `npm run hash-password`. In Supabase SQL Editor, create the owner account with the generated hash (or update the existing owner row): `INSERT INTO users (id, full_name, email, mobile_number, password, role, account_status) VALUES ('usr-admin-1', 'Store Owner', 'admin@sathyastores.com', '+910000000000', '<PASTE_HASH_HERE>', 'owner', 'active') ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, role = 'owner', account_status = 'active';` Replace the sample phone with the owner's real number. Never use the old demo passwords.
 5. Keep RLS enabled and do not add anon/authenticated access policies. The public client key is no longer used by the app. Rotate any credentials that were previously exposed or used in a deployed environment.
 

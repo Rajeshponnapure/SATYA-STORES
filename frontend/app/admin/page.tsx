@@ -11,7 +11,6 @@ import {
   Package,
   Layers,
   Settings,
-  TrendingUp,
   AlertTriangle,
   CheckCircle2,
   XCircle,
@@ -1437,8 +1436,8 @@ export default function AdminDashboardPage() {
                     toast.error("Please fill in current password, new password, and external 2FA code.");
                     return;
                   }
-                  if (adminNewPass.length < 6) {
-                    toast.error("New password must be at least 6 characters.");
+                  if (adminNewPass.length < 12) {
+                    toast.error("New password must be at least 12 characters.");
                     return;
                   }
                   if (adminNewPass !== adminConfirmPass) {

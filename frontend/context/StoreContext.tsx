@@ -242,6 +242,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Fetch live backend data
   const refreshBackendData = useCallback(async () => {
+    setIsLoadingBackend(true);
     try {
       const fetchWithTimeout = (url: string, ms = 8000) => {
         const controller = new AbortController();
@@ -249,49 +250,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
       };
 
-      const [prodRes, catRes, ordRes, setRes, marqRes, layRes, promoRes] = await Promise.allSettled([
-        fetchWithTimeout("/api/products"),
-        fetchWithTimeout("/api/categories"),
+      const [storefrontRes, ordRes] = await Promise.allSettled([
+        fetchWithTimeout("/api/storefront"),
         fetchWithTimeout("/api/orders"),
-        fetchWithTimeout("/api/settings"),
-        fetchWithTimeout("/api/marquees"),
-        fetchWithTimeout("/api/layout"),
-        fetchWithTimeout("/api/promotions"),
       ]);
 
-      if (prodRes.status === "fulfilled" && prodRes.value.ok) {
-        const data = await prodRes.value.json();
+      if (storefrontRes.status === "fulfilled" && storefrontRes.value.ok) {
+        const data = await storefrontRes.value.json();
         setProducts(data.products || []);
-      }
-
-      if (catRes.status === "fulfilled" && catRes.value.ok) {
-        const data = await catRes.value.json();
         setCategories(data.categories || []);
+        if (data.settings) setSettings(data.settings);
+        setMarquees(data.marquees || []);
+        setHomepageSections(data.sections || []);
+        setPromotions(data.promotions || []);
       }
 
       if (ordRes.status === "fulfilled" && ordRes.value.ok) {
         const data = await ordRes.value.json();
         setOrders(data.orders || []);
-      }
-
-      if (setRes.status === "fulfilled" && setRes.value.ok) {
-        const data = await setRes.value.json();
-        if (data.settings) setSettings(data.settings);
-      }
-
-      if (marqRes.status === "fulfilled" && marqRes.value.ok) {
-        const data = await marqRes.value.json();
-        setMarquees(data.marquees || []);
-      }
-
-      if (layRes.status === "fulfilled" && layRes.value.ok) {
-        const data = await layRes.value.json();
-        setHomepageSections(data.sections || []);
-      }
-
-      if (promoRes.status === "fulfilled" && promoRes.value.ok) {
-        const data = await promoRes.value.json();
-        setPromotions(data.promotions || []);
       }
     } catch (err) {
       console.warn("Backend sync failed; local data used:", err);
@@ -560,7 +536,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error };
       }
 
-      const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_satyaStore123";
+      const keyId = data.keyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      if (!keyId) {
+        toast.error("Online payments are not configured. Please choose UPI or bank transfer.");
+        return { success: false, error: "Razorpay is not configured" };
+      }
 
       // 3. Open Razorpay payment modal
       return new Promise((resolve) => {

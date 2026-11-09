@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import crypto from "crypto";
 import cors from "cors";
+import compression from "compression";
 import fs from "fs";
 import path from "path";
 import { productService } from "./services/productService";
@@ -22,6 +23,7 @@ try {
 } catch (e) {}
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
+import { createRateLimitStore, hasDistributedRateLimits } from "./utils/rateLimitStore";
 import {
   clearAdminSession,
   clearCustomerSession,
@@ -31,14 +33,82 @@ import {
   requireCustomerSession,
   setAdminSession,
   setCustomerSession,
+  isSessionSecretConfigured,
 } from "./utils/session";
+
+const isProduction = process.env.NODE_ENV === "production";
+
+function configuredOrigins(): Set<string> {
+  const configured = (process.env.FRONTEND_URL || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!isProduction) configured.push("http://localhost:3000", "http://127.0.0.1:3000");
+
+  return new Set(configured.flatMap((value) => {
+    try {
+      const url = new URL(value);
+      return [url.origin];
+    } catch {
+      return [];
+    }
+  }));
+}
+
+const trustedOrigins = configuredOrigins();
+
+function isTrustedOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  try {
+    return trustedOrigins.has(new URL(origin).origin);
+  } catch {
+    return false;
+  }
+}
+
+function setPublicCache(res: Response, seconds = 60): void {
+  // Edge caches may store only responses that are identical for every visitor.
+  // Authenticated admin responses are deliberately marked no-store by callers.
+  res.set("Cache-Control", `public, max-age=${seconds}, s-maxage=${seconds}, stale-while-revalidate=${seconds * 5}`);
+  res.vary("Cookie");
+}
+
+function respondInternalError(res: Response, error: unknown): void {
+  // Database/provider details belong in private server logs, not API responses.
+  console.error("[API] Unhandled request error:", error);
+  res.status(500).json({ success: false, error: "Request failed. Please try again later." });
+}
+
+function assertProductionConfiguration(): void {
+  if (!isProduction) return;
+  const missing: string[] = [];
+  if (!isSessionSecretConfigured()) missing.push("SESSION_SECRET (32+ characters)");
+  if (trustedOrigins.size === 0) missing.push("FRONTEND_URL (exact deployed frontend origin)");
+  if (!isSupabaseConfigured) missing.push("SUPABASE_URL and a backend-only Supabase secret key");
+  if (missing.length > 0) {
+    throw new Error(`[Configuration] Production startup refused: missing ${missing.join(", ")}.`);
+  }
+}
+
+assertProductionConfiguration();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-app.use(rateLimit({ windowMs: 10 * 60 * 1000, limit: 300, standardHeaders: "draft-8", legacyHeaders: false }));
+app.use(compression({ threshold: 1024 }));
+if (isProduction && !hasDistributedRateLimits()) {
+  console.warn("[Rate limit] REDIS_URL is not configured. Limits are per-instance and do not protect a multi-replica deployment.");
+}
+const globalRateLimitStore = createRateLimitStore("satya:rl:global:");
+app.use(rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 300,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  ...(globalRateLimitStore ? { store: globalRateLimitStore } : {}),
+}));
 
 const uploadsDir = path.resolve(__dirname, "data", "uploads");
 if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
@@ -47,20 +117,13 @@ if (!process.env.VERCEL && !fs.existsSync(uploadsDir)) {
 
 if (!process.env.VERCEL) app.use("/uploads", express.static(uploadsDir));
 
-// Enable CORS for frontend clients (local, preview, production)
+// The frontend normally proxies API calls through its own origin. Direct calls are
+// limited to explicitly configured origins; never trust a lookalike subdomain.
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (
-        origin.endsWith(".vercel.app") ||
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1") ||
-        (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL)
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, true);
+      if (!origin || isTrustedOrigin(origin)) return callback(null, true);
+      return callback(null, false);
     },
     credentials: true,
   })
@@ -75,20 +138,26 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ limit: "100kb", extended: true, parameterLimit: 100 }));
+app.use("/api", (_req: Request, res: Response, next: import("express").NextFunction) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
-const authRateLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false });
+const authRateLimitStore = createRateLimitStore("satya:rl:auth:");
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  ...(authRateLimitStore ? { store: authRateLimitStore } : {}),
+});
 app.use(["/api/auth/login", "/api/admin/login", "/api/auth/signup", "/api/auth/forgot-password", "/api/auth/reset-password"], authRateLimit);
 
 app.use("/api", (req: Request, res: Response, next: import("express").NextFunction) => {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method) || req.path === "/payments/razorpay/webhook") return next();
   const origin = req.get("origin");
-  if (!origin) return next();
-  try {
-    if (new URL(origin).host === req.get("host")) return next();
-    if (origin.endsWith(".vercel.app") || origin.includes("localhost") || origin.includes("127.0.0.1")) return next();
-    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) return next();
-  } catch {}
-  return res.status(403).json({ success: false, error: "Cross-origin request rejected." });
+  if (isTrustedOrigin(origin)) return next();
+  return res.status(403).json({ success: false, error: "A trusted browser origin is required for this request." });
 });
 
 // Root & Health Checks for Cloud Platforms (Render, Vercel, Railway)
@@ -106,12 +175,45 @@ app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "ok" });
 });
 
+app.get("/ready", async (_req: Request, res: Response) => {
+  try {
+    await getDatabase();
+    res.json({ status: "ready", database: isSupabaseConfigured ? "supabase" : "local-file" });
+  } catch {
+    res.status(503).json({ status: "unavailable" });
+  }
+});
+
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
     status: "ok",
     service: "Satya Stores Backend API",
     dbMode: isSupabaseConfigured ? "supabase" : "local-file",
   });
+});
+
+// One cacheable bootstrap response avoids a storefront cold load issuing seven
+// independent API requests. Admins receive their complete view and never share
+// it through an edge cache.
+app.get("/api/storefront", async (req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const isAdmin = hasAdminSession(req);
+    if (isAdmin) res.set("Cache-Control", "private, no-store");
+    else setPublicCache(res);
+
+    res.json({
+      success: true,
+      products: isAdmin ? db.products : db.products.filter((product) => product.publicationStatus === "active"),
+      categories: isAdmin ? db.categories : db.categories.filter((category) => category.status === "active"),
+      promotions: db.promotions?.length ? db.promotions : initialPromotions,
+      settings: db.settings,
+      marquees: (db.marquees || []).filter((item) => isAdmin || item.status === "active"),
+      sections: [...(db.homepageSections || [])].sort((a, b) => a.order - b.order),
+    });
+  } catch (err: unknown) {
+    respondInternalError(res, err);
+  }
 });
 
 // ==========================================
@@ -135,7 +237,7 @@ app.post("/api/auth/signup", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -151,7 +253,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -170,7 +272,7 @@ app.post("/api/admin/login", async (req: Request, res: Response) => {
     }
     res.json({ success: true, user: result.user, isAdmin: true });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -197,7 +299,14 @@ app.use("/api/upload", (req: Request, res: Response, next: import("express").Nex
   if (hasAdminSession(req)) return next();
   return requireCustomerSession(req, res, next);
 });
-app.use("/api/upload", rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false }));
+const uploadRateLimitStore = createRateLimitStore("satya:rl:upload:");
+app.use("/api/upload", rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  ...(uploadRateLimitStore ? { store: uploadRateLimitStore } : {}),
+}));
 app.use("/api/settings", requireAdminForMutation);
 
 // Forgot Password Request (Generates OTP)
@@ -216,7 +325,7 @@ app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -236,7 +345,7 @@ app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -246,7 +355,7 @@ app.get("/api/admin/profile", async (_req: Request, res: Response) => {
     const profile = await userService.getAdminProfile();
     res.json({ success: true, profile });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -262,7 +371,7 @@ app.put("/api/admin/profile", async (req: Request, res: Response) => {
     const result = await userService.updateAdminProfile({ fullName, email, mobileNumber, businessEntity, profileImage });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -271,7 +380,7 @@ app.get("/api/admin/2fa-setup", async (_req: Request, res: Response) => {
     const result = await userService.getAdmin2faSetup();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -284,7 +393,7 @@ app.post("/api/admin/verify-2fa", async (req: Request, res: Response) => {
     const result = await userService.verifyAdmin2faCode(code);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -293,7 +402,7 @@ app.post("/api/admin/generate-2fa", async (_req: Request, res: Response) => {
     const result = await userService.generateAdmin2fa();
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -316,13 +425,16 @@ app.post("/api/admin/change-password", async (req: Request, res: Response) => {
     }
     res.json({ success: true, message: "Admin password updated successfully with 2FA verification." });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
 // Image Upload API (Accepts Base64 payload from desktop drag-drop or mobile file/camera picker)
 app.post("/api/upload", async (req: Request, res: Response) => {
   try {
+    if (isProduction && (!process.env.BLOB_READ_WRITE_TOKEN || !putBlob)) {
+      return res.status(503).json({ success: false, error: "Durable object storage is not configured for uploads." });
+    }
     const { fileName, fileData } = req.body;
     if (!fileData) {
       return res.status(400).json({ success: false, error: "No image payload supplied." });
@@ -355,13 +467,9 @@ app.post("/api/upload", async (req: Request, res: Response) => {
         const blob = await putBlob(`uploads/${uniqueName}`, buffer, { access: "public", contentType: mime });
         relativeUrl = blob.url;
       } catch (blobErr) {
-        console.warn("[Upload] Vercel blob put warning, using inline data URI:", blobErr);
-        relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
+        console.error("[Upload] Object storage write failed:", blobErr);
+        return res.status(503).json({ success: false, error: "Image storage is temporarily unavailable." });
       }
-    } else if (process.env.RENDER) {
-      // Inline base64 URI guarantees image persistence through Render deploys
-      // (ephemeral disk) when no Blob token is configured.
-      relativeUrl = `data:${mime};base64,${buffer.toString("base64")}`;
     } else {
       fs.writeFileSync(path.join(uploadsDir, uniqueName), buffer);
     }
@@ -373,7 +481,7 @@ app.post("/api/upload", async (req: Request, res: Response) => {
       message: "Image uploaded successfully.",
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -388,7 +496,7 @@ app.get("/api/admin/database-status", async (_req: Request, res: Response) => {
       engine: isConfigured ? "Supabase PostgreSQL (backend-only credentials)" : "Local development storage",
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -398,7 +506,7 @@ app.get("/api/users/:id", requireCustomerSession, async (req: Request, res: Resp
     if (!user) return res.status(404).json({ success: false, error: "User not found" });
     res.json({ success: true, user });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -431,7 +539,7 @@ app.put("/api/users/:id/profile", requireCustomerSession, async (req: Request, r
     const result = await userService.updateUserProfile(String(req.params.id), { fullName, mobileNumber, profileImage, addresses: safeAddresses });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -444,7 +552,7 @@ app.post("/api/users/:id/favorites", requireCustomerSession, async (req: Request
     const result = await userService.toggleFavorite(String(req.params.id), productId);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -455,7 +563,7 @@ app.get("/api/admin/users", async (req: Request, res: Response) => {
     const result = await userService.getAllUsers(search);
     res.json({ success: true, ...result });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -467,7 +575,7 @@ app.post("/api/admin/users", async (req: Request, res: Response) => {
     }
     res.status(201).json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -479,7 +587,7 @@ app.put("/api/admin/users/:id", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -491,7 +599,7 @@ app.delete("/api/admin/users/:id", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -504,7 +612,7 @@ app.put("/api/admin/users/:id/password", async (req: Request, res: Response) => 
     const result = await userService.adminUpdateUserPassword(String(req.params.id), newPassword);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -514,10 +622,13 @@ app.put("/api/admin/users/:id/password", async (req: Request, res: Response) => 
 app.get("/api/products", async (req: Request, res: Response) => {
   try {
     const allProducts = await productService.getAllProducts();
-    const products = hasAdminSession(req) ? allProducts : allProducts.filter((product) => product.publicationStatus === "active");
+    const isAdmin = hasAdminSession(req);
+    const products = isAdmin ? allProducts : allProducts.filter((product) => product.publicationStatus === "active");
+    if (isAdmin) res.set("Cache-Control", "private, no-store");
+    else setPublicCache(res);
     res.json({ success: true, products });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -526,7 +637,7 @@ app.post("/api/products", async (req: Request, res: Response) => {
     const result = await productService.addProduct(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -535,7 +646,7 @@ app.put("/api/products/:id", async (req: Request, res: Response) => {
     const result = await productService.updateProduct(String(req.params.id), req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -544,7 +655,7 @@ app.delete("/api/products/:id", async (req: Request, res: Response) => {
     const result = await productService.deleteProduct(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -556,17 +667,20 @@ app.post("/api/products/:id/restore", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
 app.get("/api/categories", async (req: Request, res: Response) => {
   try {
     const allCategories = await productService.getAllCategories();
-    const categories = hasAdminSession(req) ? allCategories : allCategories.filter((category) => category.status === "active");
+    const isAdmin = hasAdminSession(req);
+    const categories = isAdmin ? allCategories : allCategories.filter((category) => category.status === "active");
+    if (isAdmin) res.set("Cache-Control", "private, no-store");
+    else setPublicCache(res);
     res.json({ success: true, categories });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -574,9 +688,10 @@ app.get("/api/promotions", async (_req: Request, res: Response) => {
   try {
     const db = await getDatabase();
     const promotions = db.promotions?.length ? db.promotions : initialPromotions;
+    setPublicCache(res);
     res.json({ success: true, promotions });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -585,7 +700,7 @@ app.post("/api/categories", async (req: Request, res: Response) => {
     const result = await productService.addCategory(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -594,7 +709,7 @@ app.put("/api/categories/:id", async (req: Request, res: Response) => {
     const result = await productService.updateCategory(String(req.params.id), req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -603,7 +718,7 @@ app.delete("/api/categories/:id", async (req: Request, res: Response) => {
     const result = await productService.deleteCategory(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -624,7 +739,7 @@ app.get("/api/orders", async (req: Request, res: Response) => {
     // Return empty list gracefully if visitor is not logged in
     res.json({ success: true, orders: [] });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -633,7 +748,7 @@ app.get("/api/users/:id/orders", requireCustomerSession, async (req: Request, re
     const orders = await orderService.getUserOrders(String(req.params.id));
     res.json({ success: true, orders });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -648,7 +763,7 @@ app.post("/api/orders", requireCustomerSession, async (req: Request, res: Respon
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -675,7 +790,7 @@ app.get("/api/orders/:id", requireOrderOwner, async (req: Request, res: Response
     }
     res.json({ success: true, order });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -691,7 +806,7 @@ app.patch("/api/admin/orders/:id/status", async (req: Request, res: Response) =>
     );
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -701,7 +816,7 @@ app.put("/api/admin/orders/:id/items", async (req: Request, res: Response) => {
     const result = await orderService.modifyOrderItems(String(req.params.id), items, discount);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -711,7 +826,7 @@ app.post("/api/orders/:id/cancel", requireOrderOwner, async (req: Request, res: 
     const result = await orderService.cancelOrder(String(req.params.id), reason);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -732,7 +847,7 @@ app.post("/api/orders/:id/payment", requireOrderOwner, async (req: Request, res:
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -741,7 +856,7 @@ app.get("/api/admin/payments", async (_req: Request, res: Response) => {
     const payments = await paymentService.getAllPayments();
     res.json({ success: true, payments });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -754,7 +869,7 @@ app.post("/api/admin/payments/verify", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -767,7 +882,7 @@ app.post("/api/admin/payments/reject", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -808,7 +923,7 @@ app.post("/api/orders/:id/razorpay/create-order", requireOrderOwner, async (req:
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -830,7 +945,7 @@ app.post("/api/orders/:id/razorpay/verify", requireOrderOwner, async (req: Reque
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -846,7 +961,7 @@ app.post("/api/admin/orders/:id/refund", async (req: Request, res: Response) => 
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -855,7 +970,7 @@ app.get("/api/admin/settlements", async (_req: Request, res: Response) => {
     const settlements = await razorpayService.getSettlements();
     res.json({ success: true, settlements });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -920,7 +1035,7 @@ app.get("/api/admin/inventory/movements", async (_req: Request, res: Response) =
     const movements = await inventoryService.getMovements();
     res.json({ success: true, movements });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -932,7 +1047,7 @@ app.post("/api/admin/inventory/adjust", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -944,7 +1059,7 @@ app.patch("/api/admin/deliveries", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -956,7 +1071,7 @@ app.get("/api/admin/coupons", async (_req: Request, res: Response) => {
     const coupons = await cmsService.getAllCoupons();
     res.json({ success: true, coupons });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -965,7 +1080,7 @@ app.post("/api/admin/coupons", async (req: Request, res: Response) => {
     const result = await cmsService.addCoupon(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -974,7 +1089,7 @@ app.delete("/api/admin/coupons/:id", async (req: Request, res: Response) => {
     const result = await cmsService.deleteCoupon(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -987,7 +1102,7 @@ app.post("/api/coupons/apply", async (req: Request, res: Response) => {
     }
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -997,9 +1112,10 @@ app.post("/api/coupons/apply", async (req: Request, res: Response) => {
 app.get("/api/marquees", async (_req: Request, res: Response) => {
   try {
     const marquees = (await cmsService.getAllMarquees()).filter((item) => item.status === "active");
+    setPublicCache(res);
     res.json({ success: true, marquees });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1008,7 +1124,7 @@ app.post("/api/admin/marquees", async (req: Request, res: Response) => {
     const result = await cmsService.addMarquee(req.body);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1017,7 +1133,7 @@ app.delete("/api/admin/marquees/:id", async (req: Request, res: Response) => {
     const result = await cmsService.deleteMarquee(String(req.params.id));
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1027,9 +1143,10 @@ app.delete("/api/admin/marquees/:id", async (req: Request, res: Response) => {
 app.get("/api/products/:id/reviews", async (req: Request, res: Response) => {
   try {
     const reviews = await userService.getProductReviews(String(req.params.id));
+    setPublicCache(res, 30);
     res.json({ success: true, reviews });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1050,7 +1167,7 @@ app.post("/api/reviews", requireCustomerSession, async (req: Request, res: Respo
     const result = await userService.addReview({ productId, userId, userName: user.fullName, rating, title: title.trim(), comment: comment.trim() });
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1060,9 +1177,10 @@ app.post("/api/reviews", requireCustomerSession, async (req: Request, res: Respo
 app.get("/api/layout", async (_req: Request, res: Response) => {
   try {
     const sections = await cmsService.getHomepageSections();
+    setPublicCache(res);
     res.json({ success: true, sections });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1072,7 +1190,7 @@ app.post("/api/admin/layout", async (req: Request, res: Response) => {
     const result = await cmsService.updateHomepageSections(sections);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1082,9 +1200,10 @@ app.post("/api/admin/layout", async (req: Request, res: Response) => {
 app.get("/api/settings", async (_req: Request, res: Response) => {
   try {
     const db = await getDatabase();
+    setPublicCache(res, 30);
     res.json({ success: true, settings: db.settings });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 
@@ -1095,7 +1214,7 @@ app.post("/api/settings", async (req: Request, res: Response) => {
     await saveDatabase(db);
     res.json({ success: true, settings: db.settings });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err?.message || "Request failed." });
+    respondInternalError(res, err);
   }
 });
 

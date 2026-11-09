@@ -2,6 +2,59 @@ import { getDatabase, saveDatabase } from "../db/database";
 import { Order } from "../types";
 import crypto from "crypto";
 
+function releaseExpiredReservations(db: Awaited<ReturnType<typeof getDatabase>>): boolean {
+  const configuredMinutes = Number(db.settings.reservationExpiryMinutes);
+  const reservationMinutes = Number.isFinite(configuredMinutes)
+    ? Math.min(Math.max(configuredMinutes, 5), 24 * 60)
+    : 30;
+  const expiryTime = Date.now() - reservationMinutes * 60 * 1000;
+  let changed = false;
+  if (!db.inventoryMovements) db.inventoryMovements = [];
+
+  for (const order of db.orders) {
+    const createdAt = Date.parse(order.createdAt);
+    if (
+      order.orderStatus !== "Order Created" ||
+      order.paymentStatus !== "Awaiting Payment" ||
+      !Number.isFinite(createdAt) ||
+      createdAt > expiryTime
+    ) {
+      continue;
+    }
+
+    for (const item of order.itemsSnapshot) {
+      const product = db.products.find((candidate) => candidate.id === item.productId);
+      if (!product) continue;
+      const releasedQuantity = Math.min(product.reservedQuantity, item.quantity);
+      if (releasedQuantity === 0) continue;
+      product.reservedQuantity -= releasedQuantity;
+      db.inventoryMovements.unshift({
+        id: `mov-${crypto.randomUUID()}`,
+        productId: product.id,
+        productName: product.productName,
+        sku: product.sku,
+        movementType: "RELEASE",
+        quantity: releasedQuantity,
+        previousQuantity: product.stockQuantity,
+        newQuantity: product.stockQuantity,
+        reason: `Stock reservation expired for Order ${order.orderNumber}`,
+        relatedOrderId: order.id,
+        performedBy: "Store System",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    order.orderStatus = "Cancelled";
+    order.paymentStatus = "Rejected";
+    order.deliveryStatus = "Cancelled";
+    order.rejectionReason = "Payment window expired before payment was started.";
+    order.updatedAt = new Date().toISOString();
+    changed = true;
+  }
+
+  return changed;
+}
+
 export const orderService = {
   async getAllOrders(): Promise<Order[]> {
     const db = await getDatabase();
@@ -16,7 +69,7 @@ export const orderService = {
   async createOrder(payload: {
     items: any[];
     address: any;
-    paymentMethod: "UPI" | "BANK_TRANSFER";
+    paymentMethod: "RAZORPAY" | "UPI" | "BANK_TRANSFER";
     userId?: string;
     customerEmail?: string;
     couponCode?: string;
@@ -33,6 +86,9 @@ export const orderService = {
       return { success: false, error: "Order details are invalid." };
     }
     const db = await getDatabase();
+    if (releaseExpiredReservations(db)) {
+      await saveDatabase(db);
+    }
     const pricedItems: Order["itemsSnapshot"] = [];
 
     for (const item of items) {

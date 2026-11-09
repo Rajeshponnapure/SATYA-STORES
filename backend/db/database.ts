@@ -68,6 +68,10 @@ let memoryDb: DatabaseSchema | null = null;
 // Once the Supabase cloud state is loaded, memory stays authoritative for this process;
 // wholesale re-reads would wipe any in-session mutation the cloud does not have yet.
 let cloudLoaded = false;
+// Every storefront endpoint asks for data during the first render. Coalesce those
+// simultaneous requests into one hydration instead of issuing the same eight
+// Supabase reads for every request.
+let cloudLoadPromise: Promise<DatabaseSchema> | null = null;
 
 // ==========================================
 // SUPABASE SNAKE_CASE <-> CAMELCASE MAPPERS
@@ -164,7 +168,7 @@ function mapSupabaseAdmin(a: any): AdminProfile {
     role: a.role || "owner",
     twoFactorEnabled: Boolean(a.two_factor_enabled ?? a.twoFactorEnabled ?? true),
     twoFactorMethod: a.two_factor_method || a.twoFactorMethod || "OTP_SMS_EMAIL",
-    twoFactorSecret: a.two_factor_secret || a.twoFactorSecret || "JBSWY3DPEHPK3PXP",
+    twoFactorSecret: a.two_factor_secret || a.twoFactorSecret || undefined,
     twoFactorPin: a.two_factor_pin || a.twoFactorPin || "",
     profileImage: a.profile_image || a.profileImage || undefined,
     updatedAt: a.updated_at || a.updatedAt || new Date().toISOString(),
@@ -224,92 +228,107 @@ function loadInitialFallbackDatabase(): DatabaseSchema {
   };
 }
 
-export async function getDatabase(): Promise<DatabaseSchema> {
-  // 1. Prioritize Live Supabase Cloud Database Query if configured
-  if (isSupabaseConfigured && supabase) {
-    // Memory is authoritative after the first successful cloud load
-    if (cloudLoaded && memoryDb) {
-      return memoryDb;
-    }
-    try {
-      const [
-        { data: prodData, error: prodErr },
-        { data: catData },
-        { data: ordData },
-        { data: settingsData },
-        { data: usersData },
-        { data: adminData },
-        { data: revData },
-        { data: marqData },
-      ] = await Promise.all([
-        supabase.from("products").select("*"),
-        supabase.from("categories").select("*"),
-        supabase.from("orders").select("*"),
-        supabase.from("store_settings").select("*").maybeSingle(),
-        supabase.from("users").select("*"),
-        supabase.from("admin_profile").select("*").maybeSingle(),
-        supabase.from("reviews").select("*"),
-        supabase.from("marquees").select("*"),
-      ]);
-
-      const liveProducts = prodData && prodData.length > 0 ? prodData.map(mapSupabaseProduct) : (initialProducts || []);
-      const liveCategories = catData && catData.length > 0 ? catData.map(mapSupabaseCategory) : (initialCategories || []);
-      const liveUsers = usersData && usersData.length > 0 ? usersData.map(mapSupabaseUser) : (initialUsers || []);
-      const liveOrders = (ordData || []).map((o: any) => ({
-        ...o,
-        orderNumber: o.order_number || o.orderNumber,
-        userId: o.user_id || o.userId,
-        customerName: o.customer_name || o.customerName,
-        customerMobile: o.customer_mobile || o.customerMobile,
-        customerEmail: o.customer_email || o.customerEmail,
-        itemsSnapshot: o.items_snapshot || o.itemsSnapshot || [],
-        shippingAddressSnapshot: o.shipping_address_snapshot || o.shippingAddressSnapshot || {},
-        orderStatus: o.order_status || o.orderStatus,
-        paymentStatus: o.payment_status || o.paymentStatus,
-        deliveryStatus: o.delivery_status || o.deliveryStatus,
-        paymentMethod: o.payment_method || o.paymentMethod,
-        paymentReference: o.payment_reference || o.paymentReference,
-        paymentEvidenceUrl: o.payment_evidence_url || o.paymentEvidenceUrl,
-        totalAmount: Number(o.total_amount ?? o.totalAmount ?? 0),
-        subtotal: Number(o.subtotal ?? 0),
-        discount: Number(o.discount ?? 0),
-        shippingCharge: Number(o.shipping_charge ?? o.shippingCharge ?? 0),
-      }));
-
-      const liveSchema: DatabaseSchema = {
-        products: liveProducts,
-        categories: liveCategories,
-        orders: liveOrders,
-        settings: mapSupabaseSettings(settingsData),
-        promotions: initialPromotions || [],
-        inventoryMovements: [],
-        users: liveUsers,
-        adminProfile: mapSupabaseAdmin(adminData),
-        reviews: (revData as any) || [],
-        coupons: initialCoupons || [],
-        marquees: (marqData && marqData.length > 0 ? (marqData as any) : initialMarquees) || [],
-        homepageSections: initialHomepageSections || [],
-        deletedProducts: [],
-      };
-
-      // Seed initial data into Supabase if connecting to an empty database
-      if (!usersData || usersData.length === 0 || !prodData || prodData.length === 0) {
-        await saveDatabase(liveSchema).catch(() => undefined);
-      }
-
-      memoryDb = liveSchema;
-      cloudLoaded = true;
-      return liveSchema;
-    } catch (e: any) {
-      console.warn("[Database] Live Supabase query notice, falling back to local store data:", e?.message || e);
-    }
-  }
-
-  // 2. Return memory cache or initialize from local JSON database / seed
+function getLocalDatabase(): DatabaseSchema {
   if (!memoryDb) {
     memoryDb = loadInitialFallbackDatabase();
   }
   return memoryDb;
+}
+
+async function loadCloudDatabase(): Promise<DatabaseSchema> {
+  try {
+    const [
+      { data: prodData, error: prodErr },
+      { data: catData },
+      { data: ordData },
+      { data: settingsData },
+      { data: usersData },
+      { data: adminData },
+      { data: revData },
+      { data: marqData },
+    ] = await Promise.all([
+      supabase.from("products").select("*"),
+      supabase.from("categories").select("*"),
+      supabase.from("orders").select("*"),
+      supabase.from("store_settings").select("*").maybeSingle(),
+      supabase.from("users").select("*"),
+      supabase.from("admin_profile").select("*").maybeSingle(),
+      supabase.from("reviews").select("*"),
+      supabase.from("marquees").select("*"),
+    ]);
+
+    if (prodErr) throw prodErr;
+
+    const liveProducts = prodData && prodData.length > 0 ? prodData.map(mapSupabaseProduct) : (initialProducts || []);
+    const liveCategories = catData && catData.length > 0 ? catData.map(mapSupabaseCategory) : (initialCategories || []);
+    // A new production database must not receive demo accounts or their sample
+    // addresses. The owner is created explicitly during deployment.
+    const liveUsers = usersData && usersData.length > 0
+      ? usersData.map(mapSupabaseUser)
+      : (process.env.NODE_ENV === "production" ? [] : (initialUsers || []));
+    const liveOrders = (ordData || []).map((o: any) => ({
+      ...o,
+      orderNumber: o.order_number || o.orderNumber,
+      userId: o.user_id || o.userId,
+      customerName: o.customer_name || o.customerName,
+      customerMobile: o.customer_mobile || o.customerMobile,
+      customerEmail: o.customer_email || o.customerEmail,
+      itemsSnapshot: o.items_snapshot || o.itemsSnapshot || [],
+      shippingAddressSnapshot: o.shipping_address_snapshot || o.shippingAddressSnapshot || {},
+      orderStatus: o.order_status || o.orderStatus,
+      paymentStatus: o.payment_status || o.paymentStatus,
+      deliveryStatus: o.delivery_status || o.deliveryStatus,
+      paymentMethod: o.payment_method || o.paymentMethod,
+      paymentReference: o.payment_reference || o.paymentReference,
+      paymentEvidenceUrl: o.payment_evidence_url || o.paymentEvidenceUrl,
+      totalAmount: Number(o.total_amount ?? o.totalAmount ?? 0),
+      subtotal: Number(o.subtotal ?? 0),
+      discount: Number(o.discount ?? 0),
+      shippingCharge: Number(o.shipping_charge ?? o.shippingCharge ?? 0),
+    }));
+
+    const liveSchema: DatabaseSchema = {
+      products: liveProducts,
+      categories: liveCategories,
+      orders: liveOrders,
+      settings: mapSupabaseSettings(settingsData),
+      promotions: initialPromotions || [],
+      inventoryMovements: [],
+      users: liveUsers,
+      adminProfile: mapSupabaseAdmin(adminData),
+      reviews: (revData as any) || [],
+      coupons: initialCoupons || [],
+      marquees: (marqData && marqData.length > 0 ? (marqData as any) : initialMarquees) || [],
+      homepageSections: initialHomepageSections || [],
+      deletedProducts: [],
+    };
+
+    // Seed only local/development-style empty databases. Production deployments
+    // must create their owner account explicitly rather than importing demo users.
+    if ((!usersData || usersData.length === 0 || !prodData || prodData.length === 0) && process.env.NODE_ENV !== "production") {
+      await saveDatabase(liveSchema);
+    }
+
+    memoryDb = liveSchema;
+    cloudLoaded = true;
+    return liveSchema;
+  } catch (error: any) {
+    if (process.env.NODE_ENV === "production") throw error;
+    console.warn("[Database] Live Supabase query notice, falling back to local store data:", error?.message || error);
+    return getLocalDatabase();
+  }
+}
+
+export async function getDatabase(): Promise<DatabaseSchema> {
+  if (!isSupabaseConfigured || !supabase) return getLocalDatabase();
+  if (cloudLoaded && memoryDb) return memoryDb;
+
+  if (!cloudLoadPromise) {
+    cloudLoadPromise = loadCloudDatabase().finally(() => {
+      cloudLoadPromise = null;
+    });
+  }
+  return cloudLoadPromise;
 }
 
 export async function saveDatabase(data: DatabaseSchema): Promise<void> {

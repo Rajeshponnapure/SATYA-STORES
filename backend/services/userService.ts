@@ -183,10 +183,7 @@ export const userService = {
       };
     }
 
-    const isOwner = user.role === "owner";
-    const configuredAdminPass = process.env.ADMIN_PASSWORD;
-    const usesEnvPassword = isOwner && configuredAdminPass && passwordAttempt === configuredAdminPass;
-    const isMatch = usesEnvPassword || verifyPassword(passwordAttempt, user.password);
+    const isMatch = verifyPassword(passwordAttempt, user.password);
 
     if (!isMatch) {
       return {
@@ -402,6 +399,9 @@ export const userService = {
     otp: string,
     newPassword: string
   ): Promise<{ success: boolean; message?: string; error?: string }> {
+    if (typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 200) {
+      return { success: false, error: "Password must be between 12 and 200 characters." };
+    }
     const db = await getDatabase();
     const identifier = emailOrPhone.trim().toLowerCase();
     const tokenRecord = passwordResetTokens.get(identifier);
@@ -575,6 +575,9 @@ export const userService = {
     newPassword: string,
     twoFactorCode: string
   ): Promise<{ success: boolean; error?: string; methodUsed?: string }> {
+    if (typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 200) {
+      return { success: false, error: "Password must be between 12 and 200 characters." };
+    }
     const db = await getDatabase();
     const adminUser = (db.users || []).find((u) => u.role === "owner");
 
