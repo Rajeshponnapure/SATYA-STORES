@@ -22,7 +22,6 @@ import {
   UserPlus,
   GripVertical,
   Undo2,
-  Copy,
   Truck,
   RefreshCw,
   Search,
@@ -92,10 +91,19 @@ export default function AdminDashboardPage() {
     adminProfile,
     fetchAdminProfile,
     updateAdminProfile,
+    adminPasskeys,
+    fetchAdminPasskeys,
+    revokeAdminPasskey,
+    createAdminPasskeyEnrollmentCode,
     uploadImage,
-    fetchAdmin2faSetup,
     verifyAdmin2faCode,
-    generateAdmin2fa,
+    beginAdminTotpSetup,
+    confirmAdminTotpSetup,
+    beginAdminAuthenticatorReplacement,
+    confirmAdminAuthenticatorReplacement,
+    verifyAdminLoginTotp,
+    completeAdminPasskey,
+    approveAdminPasskeyEnrollment,
     adminChangePasswordWith2FA,
     processRefund,
     fetchSettlements,
@@ -114,6 +122,13 @@ export default function AdminDashboardPage() {
   const [adminPassword, setAdminPassword] = useState("");
   const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [adminLoginStep, setAdminLoginStep] = useState<"password" | "totp-setup" | "totp" | "passkey">("password");
+  const [loginTotpCode, setLoginTotpCode] = useState("");
+  const [loginTotpSetup, setLoginTotpSetup] = useState<{ secret: string; qrCodeDataUrl: string; expiresAt: string } | null>(null);
+  const [hasApprovedDevice, setHasApprovedDevice] = useState(false);
+  const [deviceEnrollmentApproved, setDeviceEnrollmentApproved] = useState(false);
+  const [deviceApprovalCode, setDeviceApprovalCode] = useState("");
+  const [deviceName, setDeviceName] = useState("My approved device");
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<
@@ -146,7 +161,6 @@ export default function AdminDashboardPage() {
   const [showAdminCurrentPass, setShowAdminCurrentPass] = useState(false);
   const [showAdminNewPass, setShowAdminNewPass] = useState(false);
   const [showAdminConfirmPass, setShowAdminConfirmPass] = useState(false);
-  const [generated2faNotice, setGenerated2faNotice] = useState<string | null>(null);
   const [isUpdatingAdminPass, setIsUpdatingAdminPass] = useState(false);
 
   // User Management State
@@ -221,14 +235,15 @@ export default function AdminDashboardPage() {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   // External 2FA State
-  const [admin2faSetup, setAdmin2faSetup] = useState<{
-    secret: string;
-    otpauthUri: string;
-    provider: string;
-  } | null>(null);
   const [test2faInput, setTest2faInput] = useState("");
   const [test2faStatus, setTest2faStatus] = useState<string | null>(null);
   const [isTesting2fa, setIsTesting2fa] = useState(false);
+  const [replacementTotpSetup, setReplacementTotpSetup] = useState<{ secret: string; qrCodeDataUrl: string; expiresAt: string } | null>(null);
+  const [replacementTotpCode, setReplacementTotpCode] = useState("");
+  const [isReplacingAuthenticator, setIsReplacingAuthenticator] = useState(false);
+  const [newDeviceTotpCode, setNewDeviceTotpCode] = useState("");
+  const [newDeviceEnrollment, setNewDeviceEnrollment] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [isCreatingDeviceEnrollment, setIsCreatingDeviceEnrollment] = useState(false);
 
   // Layout Drag & Drop State
   const [draggedSectionIndex, setDraggedSectionIndex] = useState<number | null>(null);
@@ -298,14 +313,75 @@ export default function AdminDashboardPage() {
     }
   }, [adminProfile]);
 
+  useEffect(() => {
+    if (isAdminAuthenticated && activeTab === "profile") {
+      void fetchAdminPasskeys();
+    }
+  }, [activeTab, fetchAdminPasskeys, isAdminAuthenticated]);
+
   // Handle Admin Login
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminPassword) return;
 
     setIsLoggingIn(true);
-    await adminLogin(adminPassword, adminEmail);
+    const result = await adminLogin(adminPassword, adminEmail);
+    if (result.requiresTotpSetup) {
+      const setup = await beginAdminTotpSetup();
+      if (setup) {
+        setLoginTotpSetup(setup);
+        setAdminLoginStep("totp-setup");
+      }
+    } else if (result.requiresTotp) {
+      setHasApprovedDevice(Boolean(result.hasApprovedDevice));
+      setAdminLoginStep("totp");
+    }
     setIsLoggingIn(false);
+  };
+
+  const handleLoginTotp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(loginTotpCode)) {
+      toast.error("Enter the current 6-digit Google Authenticator code.");
+      return;
+    }
+    setIsLoggingIn(true);
+    const result = adminLoginStep === "totp-setup"
+      ? await confirmAdminTotpSetup(loginTotpCode)
+      : await verifyAdminLoginTotp(loginTotpCode);
+    if (result.success && result.requiresPasskey) {
+      setHasApprovedDevice(Boolean(result.requiresDeviceRegistration ? false : true));
+      setDeviceEnrollmentApproved(false);
+      setDeviceApprovalCode("");
+      setAdminLoginStep("passkey");
+      setLoginTotpCode("");
+      setLoginTotpSetup(null);
+    }
+    setIsLoggingIn(false);
+  };
+
+  const handlePasskeyLogin = async (mode: "authenticate" | "register") => {
+    setIsLoggingIn(true);
+    const result = await completeAdminPasskey(mode, deviceName);
+    setIsLoggingIn(false);
+    if (!result.success) toast.error(result.error || "Device verification failed.");
+  };
+
+  const handleApproveNewDevice = async () => {
+    if (!/^\d{8}$/.test(deviceApprovalCode)) {
+      toast.error("Enter the eight-digit approval code from an approved device.");
+      return;
+    }
+    setIsLoggingIn(true);
+    const result = await approveAdminPasskeyEnrollment(deviceApprovalCode);
+    setIsLoggingIn(false);
+    if (result.success) {
+      setDeviceEnrollmentApproved(true);
+      setDeviceApprovalCode("");
+      toast.success("This device is approved for enrollment. Register its passkey now.");
+    } else {
+      toast.error(result.error || "This device was not approved.");
+    }
   };
 
   // Keep hooks above the unauthenticated screen return so their order is stable.
@@ -326,14 +402,6 @@ export default function AdminDashboardPage() {
     return () => clearInterval(timer);
   }, [undoCountdown]);
 
-  useEffect(() => {
-    if (isAdminAuthenticated && (activeTab === "settings" || activeTab === "profile")) {
-      fetchAdmin2faSetup().then((res) => {
-        if (res) setAdmin2faSetup(res);
-      });
-    }
-  }, [isAdminAuthenticated, activeTab, fetchAdmin2faSetup]);
-
   // If not authenticated, render the Secure Admin Login Screen
   if (!isAdminAuthenticated) {
     return (
@@ -351,58 +419,72 @@ export default function AdminDashboardPage() {
             </p>
           </div>
 
-          <form onSubmit={handleAdminLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Admin Email / Username
-              </label>
-              <input
-                type="text"
-                required
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white"
-              />
-            </div>
+          {adminLoginStep === "password" && (
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Admin Email / Username</label>
+                <input type="text" required value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Admin Password</label>
+                <div className="relative">
+                  <input type={showAdminPassword ? "text" : "password"} required placeholder="Enter admin password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white" />
+                  <button type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600">
+                    {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 hover:bg-black text-amber-400 font-extrabold text-sm shadow-lg shadow-slate-900/30 transition-all flex items-center justify-center space-x-2 disabled:opacity-50">
+                <Lock className="h-4 w-4" /><span>{isLoggingIn ? "Checking password..." : "Continue"}</span>
+              </button>
+            </form>
+          )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Admin Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showAdminPassword ? "text" : "password"}
-                  required
-                  placeholder="Enter admin password"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAdminPassword(!showAdminPassword)}
-                  className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600"
-                >
-                  {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+          {adminLoginStep === "totp-setup" && loginTotpSetup && (
+            <form onSubmit={handleLoginTotp} className="space-y-4">
+              <p className="text-sm font-bold text-slate-800">Set up Google Authenticator</p>
+              <p className="text-xs text-slate-500">Scan this new QR code in Google Authenticator, then enter its current six-digit code. This QR expires in ten minutes and becomes invalid after confirmation.</p>
+              <Image src={loginTotpSetup.qrCodeDataUrl} alt="Google Authenticator setup QR code" width={208} height={208} unoptimized className="mx-auto h-52 w-52 rounded-xl border border-slate-200" />
+              <details className="rounded-lg bg-slate-50 p-2 text-xs text-slate-600"><summary className="cursor-pointer font-bold">Cannot scan the QR code?</summary><p className="mt-2 font-mono break-all select-all">{loginTotpSetup.secret}</p></details>
+              <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="6-digit authenticator code" value={loginTotpCode} onChange={(e) => setLoginTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.35em]" />
+              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Verify authenticator"}</button>
+            </form>
+          )}
+
+          {adminLoginStep === "totp" && (
+            <form onSubmit={handleLoginTotp} className="space-y-4">
+              <p className="text-sm font-bold text-slate-800">Google Authenticator verification</p>
+              <p className="text-xs text-slate-500">Enter the current six-digit code from your registered authenticator app.</p>
+              <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus required placeholder="6-digit authenticator code" value={loginTotpCode} onChange={(e) => setLoginTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full p-3 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-[0.35em]" />
+              <button type="submit" disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying..." : "Continue to device check"}</button>
+            </form>
+          )}
+
+          {adminLoginStep === "passkey" && (
+            <div className="space-y-4">
+              <p className="text-sm font-bold text-slate-800">Approved-device verification</p>
+              <p className="text-xs text-slate-500">Use this device’s device-bound passkey or hardware security key. Password and authenticator codes alone cannot open the portal.</p>
+              {hasApprovedDevice ? (
+                <button type="button" onClick={() => handlePasskeyLogin("authenticate")} disabled={isLoggingIn} className="w-full py-3 rounded-xl bg-slate-900 text-amber-400 font-extrabold text-sm disabled:opacity-50">{isLoggingIn ? "Verifying device..." : "Verify approved device"}</button>
+              ) : null}
+              <div className="border-t border-slate-200 pt-4 space-y-2">
+                {hasApprovedDevice && !deviceEnrollmentApproved ? (
+                  <>
+                    <label className="block text-xs font-bold text-slate-700">Approve this new device</label>
+                    <p className="text-[11px] leading-relaxed text-slate-500">On an already-approved device, open Admin Profile &amp; 2FA, enter a current authenticator code, and create a temporary eight-digit approval code. Enter it here. It expires in ten minutes and works once.</p>
+                    <input inputMode="numeric" maxLength={8} value={deviceApprovalCode} onChange={(e) => setDeviceApprovalCode(e.target.value.replace(/\D/g, ""))} className="w-full p-2.5 rounded-xl border border-slate-200 text-center font-mono font-bold tracking-widest text-sm" placeholder="8-digit approval code" />
+                    <button type="button" onClick={handleApproveNewDevice} disabled={isLoggingIn} className="w-full py-2.5 rounded-xl border border-slate-300 text-slate-800 font-bold text-sm disabled:opacity-50">Approve this device</button>
+                  </>
+                ) : (
+                  <>
+                    <label className="block text-xs font-bold text-slate-700">{hasApprovedDevice ? "Register approved device" : "Approve your first device"}</label>
+                    <input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} maxLength={80} className="w-full p-2.5 rounded-xl border border-slate-200 text-sm" placeholder="Example: My iPhone" />
+                    <button type="button" onClick={() => handlePasskeyLogin("register")} disabled={isLoggingIn} className="w-full py-2.5 rounded-xl border border-slate-300 text-slate-800 font-bold text-sm disabled:opacity-50">Register device-bound passkey</button>
+                  </>
+                )}
               </div>
             </div>
-
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-black text-amber-400 font-extrabold text-sm shadow-lg shadow-slate-900/30 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              {isLoggingIn ? (
-                <span>Authenticating...</span>
-              ) : (
-                <>
-                  <Lock className="h-4 w-4" />
-                  <span>Authenticate & Enter Console</span>
-                </>
-              )}
-            </button>
-          </form>
+          )}
         </div>
       </div>
     );
@@ -717,6 +799,49 @@ export default function AdminDashboardPage() {
     } else {
       setTest2faStatus(null);
       toast.error(res.error || "Invalid 2FA code.");
+    }
+  };
+
+  const handleStartAuthenticatorReplacement = async () => {
+    setIsReplacingAuthenticator(true);
+    const setup = await beginAdminAuthenticatorReplacement();
+    setIsReplacingAuthenticator(false);
+    if (setup) {
+      setReplacementTotpSetup(setup);
+      setReplacementTotpCode("");
+    }
+  };
+
+  const handleConfirmAuthenticatorReplacement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(replacementTotpCode)) {
+      toast.error("Enter the current 6-digit code from the newly scanned QR code.");
+      return;
+    }
+    setIsReplacingAuthenticator(true);
+    const result = await confirmAdminAuthenticatorReplacement(replacementTotpCode);
+    setIsReplacingAuthenticator(false);
+    if (result.success) {
+      setReplacementTotpSetup(null);
+      setReplacementTotpCode("");
+      toast.success("Authenticator replaced. The old QR code is no longer valid.");
+    }
+  };
+
+  const handleCreateDeviceEnrollment = async () => {
+    if (!/^\d{6}$/.test(newDeviceTotpCode)) {
+      toast.error("Enter the current six-digit Google Authenticator code.");
+      return;
+    }
+    setIsCreatingDeviceEnrollment(true);
+    const result = await createAdminPasskeyEnrollmentCode(newDeviceTotpCode);
+    setIsCreatingDeviceEnrollment(false);
+    if (result.success && result.code && result.expiresAt) {
+      setNewDeviceEnrollment({ code: result.code, expiresAt: result.expiresAt });
+      setNewDeviceTotpCode("");
+      toast.success("Temporary device approval code created.");
+    } else {
+      toast.error(result.error || "Could not create a device approval code.");
     }
   };
 
@@ -1374,33 +1499,25 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <p className="text-slate-500 text-[11px] leading-relaxed">
-                  Every time you reset or update your admin password, you must verify with a 6-digit code from your external Authenticator app (<strong>Google Authenticator, Microsoft Authenticator, Authy, or Apple Passwords</strong>).
+                  Every admin login requires the current 6-digit code from Google Authenticator, Microsoft Authenticator, Authy, or Apple Passwords. A QR code is shown only while enrolling or replacing an authenticator; it is never displayed as a permanent secret in this dashboard.
                 </p>
 
-                {/* Secret Key Setup */}
-                <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Authenticator Setup Key:</span>
-                    <span className="font-mono font-bold text-slate-900 text-xs tracking-wider select-all">
-                      {admin2faSetup?.secret || "Waiting for setup key..."}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!admin2faSetup?.secret) {
-                        toast.error("No 2FA setup key available yet. Reload the page.");
-                        return;
-                      }
-                      navigator.clipboard.writeText(admin2faSetup.secret);
-                      toast.success("2FA Secret Key copied to clipboard! Paste it into Google or Microsoft Authenticator.");
-                    }}
-                    className="py-1 px-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-[11px] flex items-center space-x-1 shrink-0 self-start sm:self-auto"
-                  >
-                    <Copy className="h-3.5 w-3.5 text-slate-500" />
-                    <span>Copy Key</span>
+                {!replacementTotpSetup ? (
+                  <button type="button" onClick={handleStartAuthenticatorReplacement} disabled={isReplacingAuthenticator} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-800 hover:bg-slate-100 disabled:opacity-50">
+                    {isReplacingAuthenticator ? "Generating QR code..." : "Replace authenticator and generate new QR"}
                   </button>
-                </div>
+                ) : (
+                  <form onSubmit={handleConfirmAuthenticatorReplacement} className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-[11px] font-bold text-amber-950">Scan this fresh QR code before it expires. Your existing authenticator remains active until this new code is confirmed.</p>
+                    <Image src={replacementTotpSetup.qrCodeDataUrl} alt="Replacement Google Authenticator QR code" width={176} height={176} unoptimized className="mx-auto h-44 w-44 rounded-lg bg-white p-1" />
+                    <details className="text-[11px] text-amber-950"><summary className="cursor-pointer font-bold">Use the setup key instead</summary><p className="mt-1 break-all font-mono select-all">{replacementTotpSetup.secret}</p></details>
+                    <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="New 6-digit code" value={replacementTotpCode} onChange={(e) => setReplacementTotpCode(e.target.value.replace(/\D/g, ""))} className="w-full rounded-lg border border-amber-300 bg-white p-2 text-center font-mono font-bold tracking-widest text-xs" />
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={isReplacingAuthenticator} className="rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-bold text-amber-400 disabled:opacity-50">Confirm new authenticator</button>
+                      <button type="button" onClick={() => { setReplacementTotpSetup(null); setReplacementTotpCode(""); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-700">Cancel</button>
+                    </div>
+                  </form>
+                )}
 
                 {/* Test Verification Sync */}
                 <div className="pt-1 flex items-center gap-2">
@@ -1424,6 +1541,45 @@ export default function AdminDashboardPage() {
                     <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1">
                       <CheckCircle2 className="h-3.5 w-3.5" /> {test2faStatus}
                     </span>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-200 pt-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-bold text-slate-800">Approved devices</p>
+                    <button type="button" onClick={() => void fetchAdminPasskeys()} className="text-[11px] font-bold text-blue-700 hover:text-blue-900">Refresh</button>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-500">Each device needs its own device-bound passkey after the password and authenticator check. Remove a lost or old device immediately.</p>
+                  {adminPasskeys.length === 0 ? (
+                    <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold text-amber-900">No approved device is listed yet. The next password and authenticator sign-in can register one.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {adminPasskeys.map((device) => (
+                        <li key={device.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate font-bold text-slate-800">{device.name}</p>
+                            <p className="text-[10px] text-slate-500">Added {new Date(device.createdAt).toLocaleDateString()} {device.lastUsedAt ? `· Last used ${new Date(device.lastUsedAt).toLocaleDateString()}` : "· Not used since setup"}</p>
+                          </div>
+                          <button type="button" onClick={() => { if (window.confirm(`Remove ${device.name}? This device will no longer be able to sign in.`)) void revokeAdminPasskey(device.id); }} className="shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-100">Remove</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="border-t border-slate-200 pt-3 space-y-2">
+                  <p className="font-bold text-slate-800">Add another fixed device</p>
+                  <p className="text-[11px] leading-relaxed text-slate-500">On the new phone or laptop, first enter the admin password and its Google Authenticator code. It will then ask for this temporary code before it can create a passkey. This stops someone with only your password and authenticator code from silently adding their own device.</p>
+                  <div className="flex gap-2">
+                    <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={newDeviceTotpCode} onChange={(e) => setNewDeviceTotpCode(e.target.value.replace(/\D/g, ""))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white p-2 text-center font-mono text-xs font-bold tracking-widest" placeholder="Current 6-digit code" />
+                    <button type="button" onClick={handleCreateDeviceEnrollment} disabled={isCreatingDeviceEnrollment} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[11px] font-bold text-slate-800 hover:bg-slate-100 disabled:opacity-50">{isCreatingDeviceEnrollment ? "Creating..." : "Create approval code"}</button>
+                  </div>
+                  {newDeviceEnrollment && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-800">Give this code only to your new device</p>
+                      <p className="mt-1 font-mono text-xl font-black tracking-[0.3em] text-emerald-950">{newDeviceEnrollment.code}</p>
+                      <p className="mt-1 text-[10px] text-emerald-800">Single use · expires {new Date(newDeviceEnrollment.expiresAt).toLocaleTimeString()}</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1458,7 +1614,6 @@ export default function AdminDashboardPage() {
                     setAdminNewPass("");
                     setAdminConfirmPass("");
                     setAdmin2faCode("");
-                    setGenerated2faNotice(null);
                   }
                 }}
                 className="space-y-3 pt-1"
@@ -1536,34 +1691,9 @@ export default function AdminDashboardPage() {
 
                 {/* 2FA Verification Step */}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-bold text-slate-800">
-                      Two-Factor (2FA) Security Code from Authenticator App
-                    </label>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const res = await generateAdmin2fa();
-                        if (res.success && res.otp) {
-                          setGenerated2faNotice(res.otp);
-                          setAdmin2faCode(res.otp);
-                        }
-                      }}
-                      className="text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
-                      title="Dispatch emergency backup code via external gateway"
-                    >
-                      Send Emergency SMS Code
-                    </button>
-                  </div>
-
-                  {generated2faNotice && (
-                    <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
-                      <span>Emergency Code dispatched to admin:</span>
-                      <span className="font-mono font-black text-amber-950 bg-amber-200 px-2 py-0.5 rounded">
-                        {generated2faNotice}
-                      </span>
-                    </div>
-                  )}
+                  <label className="block text-xs font-bold text-slate-800">
+                    Two-Factor (2FA) Security Code from Authenticator App
+                  </label>
 
                   <input
                     type="text"

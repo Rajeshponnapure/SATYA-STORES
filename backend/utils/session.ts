@@ -3,8 +3,12 @@ import { NextFunction, Request, Response } from "express";
 import { getDatabase } from "../db/database";
 
 const ADMIN_COOKIE = "satya_admin_session";
+const ADMIN_PREAUTH_COOKIE = "satya_admin_preauth";
+const ADMIN_PASSKEY_CHALLENGE_COOKIE = "satya_admin_passkey_challenge";
+const ADMIN_PASSKEY_ENROLLMENT_COOKIE = "satya_admin_passkey_enrollment";
 const CUSTOMER_COOKIE = "satya_customer_session";
 const ADMIN_SESSION_SECONDS = 2 * 60 * 60;
+const ADMIN_PREAUTH_SECONDS = 10 * 60;
 const CUSTOMER_SESSION_SECONDS = 8 * 60 * 60;
 const MIN_SESSION_SECRET_LENGTH = 32;
 
@@ -54,9 +58,68 @@ function issue(res: Response, name: string, subject: string, durationSeconds: nu
   return true;
 }
 
-export const setAdminSession = (res: Response): boolean => issue(res, ADMIN_COOKIE, "owner", ADMIN_SESSION_SECONDS);
+export type AdminPreAuthStage = "totp-setup" | "totp" | "passkey";
+export type AdminPasskeyCeremony = "registration" | "authentication";
+
+export function setAdminPreAuth(res: Response, stage: AdminPreAuthStage): boolean {
+  // A nonce gives each browser sign-in its own short-lived WebAuthn ceremony.
+  // This avoids process-local state, so it also works after horizontal scaling.
+  return issue(res, ADMIN_PREAUTH_COOKIE, `owner:${stage}:${crypto.randomBytes(18).toString("base64url")}`, ADMIN_PREAUTH_SECONDS);
+}
+
+export function getAdminPreAuthStage(req: Request): AdminPreAuthStage | null {
+  const subject = readSession(req, ADMIN_PREAUTH_COOKIE);
+  const stage = subject?.startsWith("owner:") ? subject.split(":")[1] : "";
+  return stage === "totp-setup" || stage === "totp" || stage === "passkey" ? stage : null;
+}
+
+export function clearAdminPreAuth(res: Response): void {
+  clearCookie(res, ADMIN_PREAUTH_COOKIE);
+}
+
+export function setAdminPasskeyChallenge(res: Response, ceremony: AdminPasskeyCeremony, challenge: string): boolean {
+  return issue(res, ADMIN_PASSKEY_CHALLENGE_COOKIE, `owner:${ceremony}:${challenge}`, 5 * 60);
+}
+
+export function getAdminPasskeyChallenge(req: Request, ceremony: AdminPasskeyCeremony): string | null {
+  const subject = readSession(req, ADMIN_PASSKEY_CHALLENGE_COOKIE);
+  const prefix = `owner:${ceremony}:`;
+  const challenge = subject?.startsWith(prefix) ? subject.slice(prefix.length) : "";
+  return challenge && /^[A-Za-z0-9_-]+$/.test(challenge) ? challenge : null;
+}
+
+export function clearAdminPasskeyChallenge(res: Response): void {
+  clearCookie(res, ADMIN_PASSKEY_CHALLENGE_COOKIE);
+}
+
+export function setAdminPasskeyEnrollment(res: Response): boolean {
+  return issue(res, ADMIN_PASSKEY_ENROLLMENT_COOKIE, "owner:approved", 5 * 60);
+}
+
+export function hasAdminPasskeyEnrollment(req: Request): boolean {
+  return readSession(req, ADMIN_PASSKEY_ENROLLMENT_COOKIE) === "owner:approved";
+}
+
+export function clearAdminPasskeyEnrollment(res: Response): void {
+  clearCookie(res, ADMIN_PASSKEY_ENROLLMENT_COOKIE);
+}
+
+export const setAdminSession = (res: Response): boolean => {
+  const issued = issue(res, ADMIN_COOKIE, "owner", ADMIN_SESSION_SECONDS);
+  if (issued) {
+    clearAdminPreAuth(res);
+    clearAdminPasskeyChallenge(res);
+    clearAdminPasskeyEnrollment(res);
+  }
+  return issued;
+};
 export const setCustomerSession = (res: Response, userId: string): boolean => issue(res, CUSTOMER_COOKIE, userId, CUSTOMER_SESSION_SECONDS);
-export const clearAdminSession = (res: Response): void => clearCookie(res, ADMIN_COOKIE);
+export const clearAdminSession = (res: Response): void => {
+  clearCookie(res, ADMIN_COOKIE);
+  clearAdminPreAuth(res);
+  clearAdminPasskeyChallenge(res);
+  clearAdminPasskeyEnrollment(res);
+};
 export const clearCustomerSession = (res: Response): void => clearCookie(res, CUSTOMER_COOKIE);
 export const getCustomerSessionId = (req: Request): string | null => readSession(req, CUSTOMER_COOKIE);
 export const hasAdminSession = (req: Request): boolean => readSession(req, ADMIN_COOKIE) === "owner";

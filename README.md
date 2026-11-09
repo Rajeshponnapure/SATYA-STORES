@@ -163,6 +163,8 @@ The backend URL defaults to port 5000 in local development. Set it when the API 
 PORT=5000
 FRONTEND_URL=http://localhost:3000
 SESSION_SECRET=replace-with-a-random-secret-of-at-least-32-characters
+# Recommended separate 32+ character secret for encrypted Google Authenticator data
+TOTP_ENCRYPTION_KEY=replace-with-a-different-random-secret-of-at-least-32-characters
 REDIS_URL=rediss://<managed-redis-endpoint>
 
 # Local or Vercel Supabase backend credentials (never put the secret key in frontend/.env.local)
@@ -183,7 +185,7 @@ Keep the admin-session secret, Redis URL, and Razorpay secret on the backend. Co
 
 - **Frontend → Vercel**: the existing Next.js project (Root Directory = `frontend`). Set `NEXT_PUBLIC_BACKEND_URL` to the Render service URL (for example `https://satya-stores-backend.onrender.com`) and redeploy. Vercel's edge rewrites proxy `/api/*` and `/uploads/*` server-side, so the browser only ever talks to the Vercel origin and the `SameSite=Strict; Path=/` session cookies keep working. Public catalog responses now carry short edge-cache directives.
 - **Backend → Render**: create a Render Web Service from this repo with **Root Directory = `backend`**, build command `npm ci && npm run build`, and start command `node dist/server.js`. Render injects `PORT`, which `server.ts` listens on automatically. Set the Health Check Path to `/ready`.
-- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control.
+- Backend environment variables on Render: `FRONTEND_URL` (the exact deployed Vercel URL), `SESSION_SECRET` (at least 32 random characters), `TOTP_ENCRYPTION_KEY` (a separate 32+ character secret recommended for encrypting authenticator data), `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET` (the exact name of the existing public image bucket), `REDIS_URL` (mandatory when running more than one API instance), and the required Razorpay credentials. Keep secret keys out of frontend environment variables and source control. Passkey origin and RP ID automatically use `FRONTEND_URL`; set `ADMIN_WEBAUTHN_ORIGIN` and `ADMIN_WEBAUTHN_RP_ID` only when a custom frontend-origin arrangement requires them.
 - **Persistence**: without `SUPABASE_URL`/`SUPABASE_SECRET_KEY` the backend persists to `data/database.json`, which resets on every Render deploy because the disk is ephemeral — configure Supabase (below) or attach a persistent Render disk. Production image uploads use the configured public Supabase Storage bucket; the API rejects uploads rather than storing large inline data on ephemeral infrastructure. Images are limited to 3 MB.
 - If Razorpay webhooks are configured, point the webhook URL at `https://<the-vercel-domain>/api/payments/razorpay/webhook` (the frontend proxies it to the backend).
 
@@ -197,7 +199,7 @@ Without Supabase credentials, the backend persists data to backend/data/database
 
 1. Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` in backend/.env. The bucket name must exactly match an existing **public** Supabase Storage bucket. The secret key is backend-only and bypasses RLS; never expose it to the browser.
 2. For a new project, run backend/schema.sql in the Supabase SQL editor.
-3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql`, `backend/migrations/20261107_profile_images.sql`, and `backend/migrations/20261109_add_user_2fa_columns.sql` in the Supabase SQL editor.
+3. For an existing project, apply `backend/migrations/20261108_lock_down_public_access.sql`, `backend/migrations/20261107_profile_images.sql`, `backend/migrations/20261109_add_user_2fa_columns.sql`, and `backend/migrations/20261109_admin_mfa_and_passkeys.sql` in the Supabase SQL editor.
 4. Generate a new admin password hash with `cd backend` then `npm run hash-password`. In Supabase SQL Editor, create the owner account with the generated hash (or update the existing owner row): `INSERT INTO users (id, full_name, email, mobile_number, password, role, account_status) VALUES ('usr-admin-1', 'Store Owner', 'admin@sathyastores.com', '+910000000000', '<PASTE_HASH_HERE>', 'owner', 'active') ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, role = 'owner', account_status = 'active';` Replace the sample phone with the owner's real number. Never use the old demo passwords.
 5. Keep RLS enabled and do not add anon/authenticated access policies. The public client key is no longer used by the app. Rotate any credentials that were previously exposed or used in a deployed environment.
 
@@ -214,7 +216,7 @@ API routes are defined in backend/server.ts and use the /api prefix.
 - **Store operations:** admin profiles, users, orders, payments, refunds, inventory, delivery, coupons, layout, and settings.
 - **Infrastructure:** health check, database status, and image upload.
 
-Admin and customer API requests use expiring, signed HttpOnly cookies. Customer routes are scoped to the signed-in user; admin routes require the owner session. See backend/utils/session.ts, backend/server.ts, and the database-lockdown migration.
+Admin and customer API requests use expiring, signed HttpOnly cookies. Customer routes are scoped to the signed-in user. An admin sign-in requires the owner password, the current Google Authenticator-compatible TOTP code, and an approved device-bound passkey or hardware security key. Synced passkeys are deliberately rejected. The first device is enrolled at setup; each later device needs a single-use ten-minute approval code created on an already-approved device after another current authenticator check. See backend/utils/session.ts, backend/server.ts, and the database-lockdown migration.
 
 ## Common commands
 

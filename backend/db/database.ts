@@ -13,6 +13,7 @@ import {
   MarqueeItem,
   HomepageSection,
   AdminProfile,
+  AdminPasskey,
 } from "../types";
 import { supabase, isSupabaseConfigured } from "./supabase";
 import {
@@ -133,6 +134,13 @@ function mapSupabaseUser(u: any): User {
     profileImage: u.profile_image || u.profileImage || undefined,
     twoFactorSecret: u.two_factor_secret || u.twoFactorSecret || undefined,
     twoFactorEnabled: Boolean(u.two_factor_enabled ?? u.twoFactorEnabled ?? false),
+    twoFactorPendingSecret: u.two_factor_pending_secret || u.twoFactorPendingSecret || undefined,
+    twoFactorPendingExpiresAt: u.two_factor_pending_expires_at || u.twoFactorPendingExpiresAt || undefined,
+    adminPasskeys: Array.isArray(u.admin_passkeys)
+      ? u.admin_passkeys as AdminPasskey[]
+      : Array.isArray(u.adminPasskeys) ? u.adminPasskeys as AdminPasskey[] : [],
+    adminDeviceEnrollmentHash: u.admin_device_enrollment_hash || u.adminDeviceEnrollmentHash || undefined,
+    adminDeviceEnrollmentExpiresAt: u.admin_device_enrollment_expires_at || u.adminDeviceEnrollmentExpiresAt || undefined,
     createdAt: u.created_at || u.createdAt || new Date().toISOString(),
   };
 }
@@ -402,6 +410,11 @@ export async function saveDatabase(data: DatabaseSchema): Promise<void> {
             profile_image: u.profileImage || null,
             two_factor_secret: u.twoFactorSecret || null,
             two_factor_enabled: u.twoFactorEnabled || false,
+            two_factor_pending_secret: u.twoFactorPendingSecret || null,
+            two_factor_pending_expires_at: u.twoFactorPendingExpiresAt || null,
+            admin_passkeys: u.adminPasskeys || [],
+            admin_device_enrollment_hash: u.adminDeviceEnrollmentHash || null,
+            admin_device_enrollment_expires_at: u.adminDeviceEnrollmentExpiresAt || null,
           }))
         );
         if (syncError) console.error("[Database] Supabase users sync failed:", syncError.message);

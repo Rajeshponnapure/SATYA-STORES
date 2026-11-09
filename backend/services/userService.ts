@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { getDatabase, saveDatabase, initialAdminProfile } from "../db/database";
-import { User, Address, Review, AdminProfile } from "../types";
+import { User, Address, Review, AdminProfile, AdminPasskey } from "../types";
 import { hashPassword, verifyPassword, generateOtp } from "../utils/auth";
 
 interface PasswordResetToken {
@@ -10,7 +10,7 @@ interface PasswordResetToken {
 }
 
 const passwordResetTokens = new Map<string, PasswordResetToken>();
-let activeAdmin2faOtp: { otp: string; expiresAt: number; provider: string } | null = null;
+const TOTP_ENCRYPTION_PREFIX = "enc:v1:";
 
 function isValidProfileImage(value: string): boolean {
   if (value.startsWith("/uploads/")) return true;
@@ -47,7 +47,45 @@ function base32Decode(base32: string): Buffer {
   return Buffer.from(output);
 }
 
-function verifyTOTP(token: string, secret: string, window = 2, timeStep = 30): boolean {
+function encryptionKey(): Buffer {
+  // A dedicated key is preferred. SESSION_SECRET is a safe fallback for a
+  // smooth upgrade, because it is already mandatory for admin sessions.
+  const material = process.env.TOTP_ENCRYPTION_KEY || process.env.SESSION_SECRET || process.env.ADMIN_SESSION_SECRET;
+  if (!material || material.length < 32) throw new Error("A strong TOTP encryption key or session secret is required.");
+  return crypto.createHash("sha256").update(`satya-stores:totp:v1:${material}`).digest();
+}
+
+function encryptTotpSecret(secret: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+  return `${TOTP_ENCRYPTION_PREFIX}${iv.toString("base64url")}:${ciphertext.toString("base64url")}:${cipher.getAuthTag().toString("base64url")}`;
+}
+
+function decryptTotpSecret(stored: string): { secret: string; wasLegacyPlaintext: boolean } {
+  if (!stored.startsWith(TOTP_ENCRYPTION_PREFIX)) return { secret: stored, wasLegacyPlaintext: true };
+  const parts = stored.slice(TOTP_ENCRYPTION_PREFIX.length).split(":");
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) throw new Error("Stored authenticator secret is invalid.");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(parts[0], "base64url"));
+  decipher.setAuthTag(Buffer.from(parts[2], "base64url"));
+  const secret = Buffer.concat([decipher.update(Buffer.from(parts[1], "base64url")), decipher.final()]).toString("utf8");
+  if (!/^[A-Z2-7]{16,128}$/.test(secret)) throw new Error("Stored authenticator secret is invalid.");
+  return { secret, wasLegacyPlaintext: false };
+}
+
+function enrollmentCodeDigest(code: string): string {
+  const material = process.env.SESSION_SECRET || process.env.ADMIN_SESSION_SECRET;
+  if (!material || material.length < 32) throw new Error("A strong session secret is required.");
+  return crypto.createHmac("sha256", material).update(`satya-stores:device-enrollment:v1:${code}`).digest("hex");
+}
+
+function sameDigest(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyTOTP(token: string, secret: string, window = 1, timeStep = 30): boolean {
   try {
     const epoch = Math.floor(Date.now() / 1000);
     const currentCounter = Math.floor(epoch / timeStep);
@@ -72,6 +110,28 @@ function verifyTOTP(token: string, secret: string, window = 2, timeStep = 30): b
   }
 }
 
+function generateTotpSecret(): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  const bytes = crypto.randomBytes(20);
+  let bits = 0;
+  let value = 0;
+  let secret = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      secret += alphabet[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) secret += alphabet[(value << (5 - bits)) & 31];
+  return secret;
+}
+
+function ownerFromDatabase(db: Awaited<ReturnType<typeof getDatabase>>): User | undefined {
+  return (db.users || []).find((user) => user.role === "owner");
+}
+
 export const userService = {
   // ==========================================
   // CUSTOMER & USER OPERATIONS
@@ -91,7 +151,7 @@ export const userService = {
     }
 
     // Strip passwords before returning
-    const safeUsers = users.map(({ password, twoFactorSecret, ...rest }) => rest);
+    const safeUsers = users.map(({ password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...rest }) => rest);
     return { users: safeUsers, total: users.length };
   },
 
@@ -99,7 +159,7 @@ export const userService = {
     const db = await getDatabase();
     const user = (db.users || []).find((u) => u.id === id);
     if (!user) return null;
-    const { password, twoFactorSecret, ...safeUser } = user;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = user;
     return safeUser;
   },
 
@@ -145,7 +205,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, twoFactorSecret, ...safeUser } = newUser;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -192,7 +252,7 @@ export const userService = {
       };
     }
 
-    const { password, twoFactorSecret, ...safeUser } = user;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = user;
     return {
       success: true,
       user: safeUser,
@@ -265,7 +325,7 @@ export const userService = {
     db.users.push(newUser);
     await saveDatabase(db);
 
-    const { password, twoFactorSecret, ...safeUser } = newUser;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = newUser;
     return { success: true, user: safeUser };
   },
 
@@ -318,7 +378,7 @@ export const userService = {
     }
 
     await saveDatabase(db);
-    const { password, twoFactorSecret, ...safeUser } = current;
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = current;
     return { success: true, user: safeUser };
   },
 
@@ -352,7 +412,7 @@ export const userService = {
 
     db.users[idx] = { ...db.users[idx], ...updates };
     await saveDatabase(db);
-    const { password, twoFactorSecret, ...safeUser } = db.users[idx];
+    const { password, twoFactorSecret, twoFactorPendingSecret, twoFactorPendingExpiresAt, adminPasskeys, adminDeviceEnrollmentHash, adminDeviceEnrollmentExpiresAt, ...safeUser } = db.users[idx];
     return { success: true, user: safeUser };
   },
 
@@ -492,82 +552,187 @@ export const userService = {
     return { success: true, profile: { ...db.adminProfile, twoFactorSecret: undefined, twoFactorPin: undefined } };
   },
 
-  async getAdmin2faSetup(): Promise<{
+  async getAdminSecurityStatus(): Promise<{ success: boolean; twoFactorEnabled: boolean; deviceCount: number }> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser) throw new Error("Administrative account is not configured.");
+    return {
+      success: true,
+      twoFactorEnabled: Boolean(adminUser.twoFactorEnabled && adminUser.twoFactorSecret),
+      deviceCount: (adminUser.adminPasskeys || []).length,
+    };
+  },
+
+  /**
+   * Starts, or replaces, a pending TOTP enrollment. A generated secret is
+   * deliberately not active until its current six-digit code is verified.
+   */
+  async beginAdminTotpSetup(): Promise<{
     success: boolean;
     secret: string;
     otpauthUri: string;
     issuer: string;
     account: string;
-    provider: string;
+    expiresAt: string;
   }> {
     const db = await getDatabase();
-    const adminUser = (db.users || []).find((u) => u.role === "owner");
+    const adminUser = ownerFromDatabase(db);
     if (!adminUser) throw new Error("Administrative account is not configured.");
-    if (!adminUser.twoFactorSecret) {
-      const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-      const bytes = crypto.randomBytes(20);
-      let bits = 0;
-      let value = 0;
-      let secret = "";
-      for (const byte of bytes) {
-        value = (value << 8) | byte;
-        bits += 8;
-        while (bits >= 5) {
-          secret += alphabet[(value >>> (bits - 5)) & 31];
-          bits -= 5;
-        }
-      }
-      if (bits > 0) secret += alphabet[(value << (5 - bits)) & 31];
-      adminUser.twoFactorSecret = secret;
-      await saveDatabase(db);
-    }
-    const secret = adminUser.twoFactorSecret;
-    const account = adminUser?.email || "admin@sathyastores.com";
+
+    const secret = generateTotpSecret();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    adminUser.twoFactorPendingSecret = encryptTotpSecret(secret);
+    adminUser.twoFactorPendingExpiresAt = expiresAt;
+    await saveDatabase(db);
+
+    const account = adminUser.email || "admin@sathyastores.com";
     const issuer = "Satya Stores";
     const otpauthUri = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+    return { success: true, secret, otpauthUri, issuer, account, expiresAt };
+  },
 
-    return {
-      success: true,
-      secret,
-      otpauthUri,
-      issuer,
-      account,
-      provider: "RFC 6238 Standard TOTP (Google Authenticator / Microsoft Authenticator / Authy / Apple)",
-    };
+  async confirmAdminTotpSetup(code: string): Promise<{ success: boolean; error?: string }> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    const storedSecret = adminUser?.twoFactorPendingSecret;
+    const expiresAt = adminUser?.twoFactorPendingExpiresAt ? Date.parse(adminUser.twoFactorPendingExpiresAt) : 0;
+    if (!adminUser || !storedSecret || !Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+      return { success: false, error: "This QR setup has expired. Generate a fresh QR code and scan it again." };
+    }
+    let secret: string;
+    try {
+      secret = decryptTotpSecret(storedSecret).secret;
+    } catch {
+      return { success: false, error: "Authenticator setup is unavailable. Generate a fresh QR code and try again." };
+    }
+    if (!verifyTOTP(code, secret)) {
+      return { success: false, error: "The code does not match this QR setup. Wait for a fresh code and try again." };
+    }
+
+    adminUser.twoFactorSecret = encryptTotpSecret(secret);
+    adminUser.twoFactorEnabled = true;
+    adminUser.twoFactorPendingSecret = undefined;
+    adminUser.twoFactorPendingExpiresAt = undefined;
+    await saveDatabase(db);
+    return { success: true };
+  },
+
+  async verifyAdminTotp(code: string): Promise<{ success: boolean; error?: string }> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser?.twoFactorEnabled || !adminUser.twoFactorSecret) {
+      return { success: false, error: "Set up Google Authenticator before continuing." };
+    }
+    try {
+      const { secret, wasLegacyPlaintext } = decryptTotpSecret(adminUser.twoFactorSecret);
+      const valid = verifyTOTP(code, secret);
+      // Existing setups from before encrypted storage are upgraded after their
+      // owner proves possession of the current authenticator code.
+      if (valid && wasLegacyPlaintext) {
+        adminUser.twoFactorSecret = encryptTotpSecret(secret);
+        await saveDatabase(db);
+      }
+      return valid
+        ? { success: true }
+        : { success: false, error: "Enter the current 6-digit code from your authenticator app." };
+    } catch {
+      return { success: false, error: "Authenticator verification is unavailable. Generate a new QR code from an existing admin session." };
+    }
+  },
+
+  async getAdminPasskeys(): Promise<AdminPasskey[]> {
+    const db = await getDatabase();
+    return ownerFromDatabase(db)?.adminPasskeys || [];
+  },
+
+  async listAdminPasskeys(): Promise<Array<Pick<AdminPasskey, "id" | "name" | "createdAt" | "lastUsedAt">>> {
+    const passkeys = await this.getAdminPasskeys();
+    return passkeys.map(({ id, name, createdAt, lastUsedAt }) => ({ id, name, createdAt, lastUsedAt }));
+  },
+
+  async addAdminPasskey(passkey: AdminPasskey): Promise<void> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser) throw new Error("Administrative account is not configured.");
+    const existing = adminUser.adminPasskeys || [];
+    if (existing.some((item) => item.id === passkey.id)) throw new Error("This device is already registered.");
+    adminUser.adminPasskeys = [...existing, passkey];
+    await saveDatabase(db);
+  },
+
+  async updateAdminPasskeyUsage(id: string, counter: number): Promise<void> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser) throw new Error("Administrative account is not configured.");
+    const passkey = (adminUser.adminPasskeys || []).find((item) => item.id === id);
+    if (!passkey) throw new Error("Approved device was not found.");
+    passkey.counter = counter;
+    passkey.lastUsedAt = new Date().toISOString();
+    await saveDatabase(db);
+  },
+
+  async removeAdminPasskey(id: string): Promise<{ success: boolean; error?: string }> {
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser) return { success: false, error: "Administrative account is not configured." };
+    const passkeys = adminUser.adminPasskeys || [];
+    if (!passkeys.some((item) => item.id === id)) return { success: false, error: "Approved device was not found." };
+    adminUser.adminPasskeys = passkeys.filter((item) => item.id !== id);
+    await saveDatabase(db);
+    return { success: true };
+  },
+
+  async createAdminDeviceEnrollment(totpCode: string): Promise<{ success: boolean; code?: string; expiresAt?: string; error?: string }> {
+    const totp = await this.verifyAdminTotp(totpCode);
+    if (!totp.success) return totp;
+
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    if (!adminUser || !(adminUser.adminPasskeys || []).length) {
+      return { success: false, error: "Approve your first device before adding another one." };
+    }
+
+    const code = crypto.randomInt(10_000_000, 100_000_000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    adminUser.adminDeviceEnrollmentHash = enrollmentCodeDigest(code);
+    adminUser.adminDeviceEnrollmentExpiresAt = expiresAt;
+    await saveDatabase(db);
+    return { success: true, code, expiresAt };
+  },
+
+  async approveAdminDeviceEnrollment(code: string): Promise<{ success: boolean; error?: string }> {
+    if (!/^\d{8}$/.test(code)) return { success: false, error: "Enter the eight-digit approval code from an approved device." };
+    const db = await getDatabase();
+    const adminUser = ownerFromDatabase(db);
+    const stored = adminUser?.adminDeviceEnrollmentHash;
+    const expiresAt = adminUser?.adminDeviceEnrollmentExpiresAt ? Date.parse(adminUser.adminDeviceEnrollmentExpiresAt) : 0;
+    if (!adminUser || !stored || !Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+      return { success: false, error: "That device-approval code has expired. Generate a new one from an approved device." };
+    }
+
+    let valid = false;
+    try {
+      valid = sameDigest(enrollmentCodeDigest(code), stored);
+    } catch {
+      return { success: false, error: "Device approval is temporarily unavailable." };
+    }
+    if (!valid) return { success: false, error: "That device-approval code is not correct." };
+
+    adminUser.adminDeviceEnrollmentHash = undefined;
+    adminUser.adminDeviceEnrollmentExpiresAt = undefined;
+    await saveDatabase(db);
+    return { success: true };
   },
 
   async generateAdmin2fa(): Promise<{ success: boolean; otp: string; message: string; provider: string }> {
-    activeAdmin2faOtp = null;
     return { success: false, otp: "", provider: "Unavailable", message: "OTP delivery is not configured. Use an authenticator app instead." };
   },
 
   async verifyAdmin2faCode(code: string): Promise<{ success: boolean; valid: boolean; method?: string; error?: string }> {
-    const db = await getDatabase();
-    const adminUser = (db.users || []).find((u) => u.role === "owner");
-    const secret = adminUser?.twoFactorSecret;
-    if (!secret) return { success: false, valid: false, error: "Set up an authenticator app first." };
-    const cleanCode = code.trim();
-
-    // 1. Check RFC 6238 TOTP from external authenticator app
-    const isTotpMatch = verifyTOTP(cleanCode, secret);
-    if (isTotpMatch) {
-      return { success: true, valid: true, method: "External Authenticator App (Google/Microsoft TOTP)" };
-    }
-
-    // 2. Check dispatched 2FA OTP
-    const isOtpMatch =
-      activeAdmin2faOtp &&
-      activeAdmin2faOtp.otp === cleanCode &&
-      Date.now() <= activeAdmin2faOtp.expiresAt;
-    if (isOtpMatch) {
-      return { success: true, valid: true, method: "External Dispatch Provider (SMS/Email OTP)" };
-    }
-
-    return {
-      success: false,
-      valid: false,
-      error: "Invalid 2FA code. Please provide the active 6-digit code from Google/Microsoft Authenticator or requested dispatch.",
-    };
+    const result = await this.verifyAdminTotp(code);
+    return result.success
+      ? { success: true, valid: true, method: "Google Authenticator compatible TOTP" }
+      : { success: false, valid: false, error: result.error };
   },
 
   async adminChangePasswordWith2FA(
@@ -591,32 +756,31 @@ export const userService = {
       return { success: false, error: "Current admin password is incorrect." };
     }
 
-    // 2. Verify 2FA code: First via RFC 6238 External Authenticator TOTP, then external OTP
+    // 2. Verify the current RFC 6238 authenticator code.
     const cleanCode = twoFactorCode.trim();
-    const secret = adminUser.twoFactorSecret;
-    if (!secret) return { success: false, error: "Set up an authenticator app first." };
+    const storedSecret = adminUser.twoFactorSecret;
+    if (!adminUser.twoFactorEnabled || !storedSecret) return { success: false, error: "Set up an authenticator app first." };
 
-    const isTotpValid = verifyTOTP(cleanCode, secret);
-    const isOtpValid =
-      activeAdmin2faOtp &&
-      activeAdmin2faOtp.otp === cleanCode &&
-      Date.now() <= activeAdmin2faOtp.expiresAt;
-
-    if (!isTotpValid && !isOtpValid) {
+    let isTotpValid = false;
+    try {
+      const { secret, wasLegacyPlaintext } = decryptTotpSecret(storedSecret);
+      isTotpValid = verifyTOTP(cleanCode, secret);
+      if (isTotpValid && wasLegacyPlaintext) adminUser.twoFactorSecret = encryptTotpSecret(secret);
+    } catch {
+      return { success: false, error: "Authenticator verification is unavailable. Generate a new QR code from an existing admin session." };
+    }
+    if (!isTotpValid) {
       return {
         success: false,
-        error: "Invalid Two-Factor Authentication (2FA) code. Please enter the current 6-digit code from your external Authenticator app (Google Authenticator, Microsoft Authenticator) or the dispatched SMS/Email code.",
+        error: "Invalid Two-Factor Authentication (2FA) code. Enter the current 6-digit code from your authenticator app.",
       };
     }
 
-    const methodUsed = isTotpValid
-      ? "External Authenticator App (RFC 6238 TOTP)"
-      : "External Dispatched Security Code";
+    const methodUsed = "External Authenticator App (RFC 6238 TOTP)";
 
     // 3. Hash and save new password
     adminUser.password = hashPassword(newPassword);
     await saveDatabase(db);
-    activeAdmin2faOtp = null; // Invalidate one-time dispatch after successful password reset
 
     return { success: true, methodUsed };
   },

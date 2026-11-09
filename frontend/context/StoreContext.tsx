@@ -29,6 +29,7 @@ import {
   initialHomepageSections,
 } from "@/lib/initialData";
 import { toast } from "sonner";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 interface RazorpayPaymentResponse {
   razorpay_order_id: string;
@@ -38,6 +39,38 @@ interface RazorpayPaymentResponse {
 
 interface RazorpayFailureResponse {
   error?: { description?: string };
+}
+
+interface AdminLoginResult {
+  success: boolean;
+  error?: string;
+  requiresTotpSetup?: boolean;
+  requiresTotp?: boolean;
+  requiresPasskey?: boolean;
+  requiresDeviceRegistration?: boolean;
+  hasApprovedDevice?: boolean;
+}
+
+interface TotpSetupResponse {
+  success: boolean;
+  secret: string;
+  otpauthUri: string;
+  qrCodeDataUrl: string;
+  expiresAt: string;
+}
+
+interface AdminPasskeyDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+interface AdminDeviceEnrollmentResult {
+  success: boolean;
+  code?: string;
+  expiresAt?: string;
+  error?: string;
 }
 
 declare global {
@@ -103,7 +136,14 @@ interface StoreContextType {
   resetPasswordWithOtp: (emailOrPhone: string, otp: string, newPassword: string) => Promise<{ success: boolean; message?: string; error?: string }>;
 
   // Admin Auth & Management
-  adminLogin: (password: string, usernameOrEmail?: string) => Promise<{ success: boolean; error?: string }>;
+  adminLogin: (password: string, usernameOrEmail?: string) => Promise<AdminLoginResult>;
+  beginAdminTotpSetup: () => Promise<TotpSetupResponse | null>;
+  confirmAdminTotpSetup: (code: string) => Promise<AdminLoginResult>;
+  beginAdminAuthenticatorReplacement: () => Promise<TotpSetupResponse | null>;
+  confirmAdminAuthenticatorReplacement: (code: string) => Promise<{ success: boolean; error?: string }>;
+  verifyAdminLoginTotp: (code: string) => Promise<AdminLoginResult>;
+  completeAdminPasskey: (mode: "authenticate" | "register", deviceName?: string) => Promise<{ success: boolean; error?: string }>;
+  approveAdminPasskeyEnrollment: (code: string) => Promise<{ success: boolean; error?: string }>;
   adminLogout: () => Promise<void>;
   adminUsers: User[];
   fetchAdminUsers: (search?: string) => Promise<void>;
@@ -130,7 +170,11 @@ interface StoreContextType {
   adminProfile: AdminProfile | null;
   fetchAdminProfile: () => Promise<AdminProfile | null>;
   updateAdminProfile: (updates: Partial<AdminProfile>) => Promise<boolean>;
-  fetchAdmin2faSetup: () => Promise<{ success: boolean; secret: string; otpauthUri: string; provider: string } | null>;
+  adminPasskeys: AdminPasskeyDevice[];
+  fetchAdminPasskeys: () => Promise<void>;
+  revokeAdminPasskey: (id: string) => Promise<boolean>;
+  createAdminPasskeyEnrollmentCode: (totpCode: string) => Promise<AdminDeviceEnrollmentResult>;
+  fetchAdmin2faSetup: () => Promise<{ success: boolean; twoFactorEnabled: boolean; deviceCount: number } | null>;
   verifyAdmin2faCode: (code: string) => Promise<{ success: boolean; valid: boolean; method?: string; error?: string }>;
   generateAdmin2fa: () => Promise<{ success: boolean; otp?: string; message?: string }>;
   adminChangePasswordWith2FA: (currentPassword: string, newPassword: string, twoFactorCode: string) => Promise<{ success: boolean; error?: string }>;
@@ -174,6 +218,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
+  const [adminPasskeys, setAdminPasskeys] = useState<AdminPasskeyDevice[]>([]);
 
   // Coupons
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -859,12 +904,127 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error };
       }
 
-      setIsAdminAuthenticated(true);
-      localStorage.setItem("satya_admin_auth", "true");
-      toast.success("Welcome, Store Administrator!");
-      return { success: true };
+      if (data.isAdmin) {
+        setIsAdminAuthenticated(true);
+        localStorage.setItem("satya_admin_auth", "true");
+        toast.success("Welcome, Store Administrator!");
+      }
+      return data as AdminLoginResult;
     } catch {
       return { success: false, error: "Could not reach the sign-in service. Please try again." };
+    }
+  };
+
+  const beginAdminTotpSetup = async (): Promise<TotpSetupResponse | null> => {
+    try {
+      const res = await fetch("/api/admin/login/setup-totp", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) return data as TotpSetupResponse;
+      toast.error(data.error || "Unable to generate an authenticator QR code.");
+    } catch {
+      toast.error("Could not start authenticator setup.");
+    }
+    return null;
+  };
+
+  const confirmAdminTotpSetup = async (code: string): Promise<AdminLoginResult> => {
+    try {
+      const res = await fetch("/api/admin/login/confirm-totp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) toast.error(data.error || "Authenticator code was not accepted.");
+      return data as AdminLoginResult;
+    } catch {
+      return { success: false, error: "Could not verify the authenticator code." };
+    }
+  };
+
+  const beginAdminAuthenticatorReplacement = async (): Promise<TotpSetupResponse | null> => {
+    try {
+      const res = await fetch("/api/admin/2fa/setup", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) return data as TotpSetupResponse;
+      toast.error(data.error || "Unable to generate a replacement QR code.");
+    } catch {
+      toast.error("Could not start authenticator replacement.");
+    }
+    return null;
+  };
+
+  const confirmAdminAuthenticatorReplacement = async (code: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/admin/2fa/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) toast.error(data.error || "Authenticator code was not accepted.");
+      return data;
+    } catch {
+      return { success: false, error: "Could not confirm authenticator replacement." };
+    }
+  };
+
+  const verifyAdminLoginTotp = async (code: string): Promise<AdminLoginResult> => {
+    try {
+      const res = await fetch("/api/admin/login/verify-totp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) toast.error(data.error || "Authenticator code was not accepted.");
+      return data as AdminLoginResult;
+    } catch {
+      return { success: false, error: "Could not verify the authenticator code." };
+    }
+  };
+
+  const completeAdminPasskey = async (mode: "authenticate" | "register", deviceName?: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const prefix = "/api/admin/login/passkey";
+      const optionsRes = await fetch(`${prefix}/${mode === "register" ? "register/" : ""}options`, { method: "POST" });
+      const optionsData = await optionsRes.json();
+      if (!optionsRes.ok || !optionsData.success) return { success: false, error: optionsData.error || "Unable to start device verification." };
+
+      const response = mode === "register"
+        ? await startRegistration({ optionsJSON: optionsData.options })
+        : await startAuthentication({ optionsJSON: optionsData.options });
+      const verifyRes = await fetch(`${prefix}/${mode === "register" ? "register/" : ""}verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ response, deviceName }),
+      });
+      const verified = await verifyRes.json();
+      if (!verifyRes.ok || !verified.success) return { success: false, error: verified.error || "This device was not approved." };
+
+      setIsAdminAuthenticated(true);
+      localStorage.setItem("satya_admin_auth", "true");
+      toast.success(mode === "register" ? "This device is now approved." : "Approved device verified.");
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The device verification was cancelled or failed.";
+      return { success: false, error: message };
+    }
+  };
+
+  const approveAdminPasskeyEnrollment = async (code: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/admin/login/passkey/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      return res.ok && data.success
+        ? { success: true }
+        : { success: false, error: data.error || "This device was not approved." };
+    } catch {
+      return { success: false, error: "Could not approve this device." };
     }
   };
 
@@ -990,9 +1150,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const fetchAdmin2faSetup = useCallback(async (): Promise<{
     success: boolean;
-    secret: string;
-    otpauthUri: string;
-    provider: string;
+    twoFactorEnabled: boolean;
+    deviceCount: number;
   } | null> => {
     try {
       const res = await fetch("/api/admin/2fa-setup");
@@ -1053,6 +1212,52 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch {
       toast.error("Network error updating profile");
       return false;
+    }
+  };
+
+  const fetchAdminPasskeys = useCallback(async (): Promise<void> => {
+    try {
+      const res = await fetch("/api/admin/passkeys");
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.devices)) {
+        setAdminPasskeys(data.devices as AdminPasskeyDevice[]);
+      }
+    } catch {
+      // The profile can still be used if this optional security inventory is unavailable.
+    }
+  }, []);
+
+  const revokeAdminPasskey = async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/admin/passkeys/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        toast.error(data.error || "Could not remove the approved device.");
+        return false;
+      }
+      setAdminPasskeys((devices) => devices.filter((device) => device.id !== id));
+      toast.success("Approved device removed. It can no longer sign in.");
+      return true;
+    } catch {
+      toast.error("Could not remove the approved device.");
+      return false;
+    }
+  };
+
+  const createAdminPasskeyEnrollmentCode = async (totpCode: string): Promise<AdminDeviceEnrollmentResult> => {
+    try {
+      const res = await fetch("/api/admin/passkeys/enrollment-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ totpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        return { success: false, error: data.error || "Could not create a device approval code." };
+      }
+      return data as AdminDeviceEnrollmentResult;
+    } catch {
+      return { success: false, error: "Could not create a device approval code." };
     }
   };
 
@@ -1515,6 +1720,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         requestPasswordReset,
         resetPasswordWithOtp,
         adminLogin,
+        beginAdminTotpSetup,
+        confirmAdminTotpSetup,
+        beginAdminAuthenticatorReplacement,
+        confirmAdminAuthenticatorReplacement,
+        verifyAdminLoginTotp,
+        completeAdminPasskey,
+        approveAdminPasskeyEnrollment,
         adminLogout,
         adminUsers,
         fetchAdminUsers,
@@ -1525,6 +1737,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         adminProfile,
         fetchAdminProfile,
         updateAdminProfile,
+        adminPasskeys,
+        fetchAdminPasskeys,
+        revokeAdminPasskey,
+        createAdminPasskeyEnrollmentCode,
         fetchAdmin2faSetup,
         verifyAdmin2faCode,
         generateAdmin2fa,

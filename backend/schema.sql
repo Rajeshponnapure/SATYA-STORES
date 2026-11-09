@@ -58,6 +58,13 @@ CREATE TABLE IF NOT EXISTS users (
   favorites TEXT[] DEFAULT '{}',
   addresses JSONB DEFAULT '[]'::jsonb,
   profile_image TEXT,
+  two_factor_secret TEXT,
+  two_factor_enabled BOOLEAN DEFAULT false,
+  two_factor_pending_secret TEXT,
+  two_factor_pending_expires_at TIMESTAMPTZ,
+  admin_passkeys JSONB DEFAULT '[]'::jsonb,
+  admin_device_enrollment_hash TEXT,
+  admin_device_enrollment_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -79,6 +86,11 @@ CREATE TABLE IF NOT EXISTS admin_profile (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_secret TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_enabled BOOLEAN DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_pending_secret TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS two_factor_pending_expires_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_passkeys JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_device_enrollment_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_device_enrollment_expires_at TIMESTAMPTZ;
 ALTER TABLE admin_profile ADD COLUMN IF NOT EXISTS profile_image TEXT;
 
 -- 5. Orders Table (Immutable Snapshot)
