@@ -91,7 +91,21 @@ app.use("/api", (req: Request, res: Response, next: import("express").NextFuncti
   return res.status(403).json({ success: false, error: "Cross-origin request rejected." });
 });
 
-// Health Check
+// Root & Health Checks for Cloud Platforms (Render, Vercel, Railway)
+app.get("/", (_req: Request, res: Response) => {
+  res.json({
+    status: "ok",
+    service: "Satya Stores Backend API",
+    version: "1.0.0",
+    dbMode: isSupabaseConfigured ? "supabase" : "local-file",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get("/health", (_req: Request, res: Response) => {
+  res.json({ status: "ok" });
+});
+
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({
     status: "ok",
@@ -1095,11 +1109,12 @@ app.use((error: any, _req: Request, res: Response, _next: import("express").Next
 });
 
 // Vercel adapts the exported Express application to its function runtime. A
-// standalone listener is only needed for local development and non-Vercel hosts.
+// standalone listener is used for local development and container hosts (such as Render).
 if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`[Satya Stores Backend] Server running on port ${PORT}`);
-    console.log(`[Satya Stores Backend] REST API endpoint: http://localhost:${PORT}/api`);
+  const listenPort = Number(PORT) || 5000;
+  app.listen(listenPort, "0.0.0.0", () => {
+    console.log(`[Satya Stores Backend] Server running on 0.0.0.0:${listenPort}`);
+    console.log(`[Satya Stores Backend] REST API endpoint: http://localhost:${listenPort}/api`);
   });
 }
 

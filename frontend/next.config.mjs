@@ -33,15 +33,18 @@ const nextConfig = {
     }];
   },
   async rewrites() {
-    if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+    const rawBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    const backendUrl = rawBackendUrl ? rawBackendUrl.replace(/\/+$/, "") : null;
+
+    if (backendUrl) {
       return [
         {
           source: "/api/:path*",
-          destination: `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/:path*`,
+          destination: `${backendUrl}/api/:path*`,
         },
         {
           source: "/uploads/:path*",
-          destination: `${process.env.NEXT_PUBLIC_BACKEND_URL}/uploads/:path*`,
+          destination: `${backendUrl}/uploads/:path*`,
         },
       ];
     }
